@@ -1,5 +1,6 @@
 from django.urls import path
+from . import views
 
 urlpatterns = [
-    # Auth and Spotify endpoints will be registered here in Week 1 tasks 8-13
+    path("health/", views.health),
 ]

@@ -32,6 +32,8 @@ services:
     environment:
       # Override DATABASE_URL from .env so it points to the Docker service, not localhost
       - DATABASE_URL=postgres://spocity:spocity@db:5432/spocity
+      # "backend" is the Docker service hostname — Next.js SSR uses it internally
+      - ALLOWED_HOSTS=127.0.0.1,localhost,backend
     depends_on:
       db:
         condition: service_healthy
@@ -43,7 +45,7 @@ services:
       POSTGRES_USER: spocity
       POSTGRES_PASSWORD: spocity
     ports:
-      - "5432:5432"
+      - "5433:5432"   # host 5433 → container 5432 (avoids conflict with local Postgres)
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
