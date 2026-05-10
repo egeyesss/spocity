@@ -1,0 +1,61 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules   # named anon volume keeps container's node_modules intact
+      - /app/.next          # same for build cache
+    environment:
+      - WATCHPACK_POLLING=true   # hot reload on Mac/Windows Docker volumes
+      # SSR requests go via Docker internal DNS (never leaves the Docker network)
+      - API_URL=http://backend:8000
+      # Browser requests go via the host — must be reachable from the user's machine
+      - NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+      - NEXT_PUBLIC_SPOTIFY_CLIENT_ID=${NEXT_PUBLIC_SPOTIFY_CLIENT_ID:-}
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override DATABASE_URL from .env so it points to the Docker service, not localhost
+      - DATABASE_URL=postgres://spocity:spocity@db:5432/spocity
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: spocity
+      POSTGRES_USER: spocity
+      POSTGRES_PASSWORD: spocity
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spocity"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:
