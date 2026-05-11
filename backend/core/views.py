@@ -100,10 +100,13 @@ def spotify_callback(request):
 
     # ── Step 4: open a Django session ─────────────────────────────────────────
     # login() writes the user ID into request.session and marks it modified.
-    # Django's SessionMiddleware then sets the sessionid cookie on the response.
+    # We then force-save and return the session key explicitly in the body so
+    # Next.js can set the cookie itself — more reliable than forwarding Set-Cookie headers.
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+    request.session.save()
+    session_key = request.session.session_key
 
-    return Response({"display_name": display_name})
+    return Response({"display_name": display_name, "session_key": session_key})
 
 
 @api_view(["GET"])

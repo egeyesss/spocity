@@ -9,13 +9,14 @@ services:
       - ./frontend:/app
       - /app/node_modules   # named anon volume keeps container's node_modules intact
       - /app/.next          # same for build cache
+    env_file:
+      - path: ./frontend/.env.local
+        required: false         # won't fail on fresh clone before .env.local is created
     environment:
-      - WATCHPACK_POLLING=true   # hot reload on Mac/Windows Docker volumes
-      # SSR requests go via Docker internal DNS (never leaves the Docker network)
+      - WATCHPACK_POLLING=true  # hot reload on Mac/Windows Docker volumes
+      # These two override anything in .env.local — they must point to Docker services
       - API_URL=http://backend:8000
-      # Browser requests go via the host — must be reachable from the user's machine
       - NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
-      - NEXT_PUBLIC_SPOTIFY_CLIENT_ID=${NEXT_PUBLIC_SPOTIFY_CLIENT_ID:-}
     depends_on:
       - backend
 

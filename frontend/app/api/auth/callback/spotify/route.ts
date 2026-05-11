@@ -31,20 +31,30 @@ export async function GET(request: NextRequest) {
       throw new Error(`Django ${djangoRes.status}`);
     }
 
-    // Redirect the browser to /me now that auth is complete.
-    const response = NextResponse.redirect(new URL("/me", request.url));
+    // Django returns the session key in the body.
+    const data = await djangoRes.json() as { session_key: string };
 
-    // Clear the verifier cookie — it's single-use.
-    response.cookies.delete("spotify_code_verifier");
+    // Browsers block Set-Cookie on redirect responses mid-cross-site chain
+    // (Spotify → us → /me). Returning a 200 with a meta-refresh breaks the
+    // chain: the browser stores the cookie from OUR origin's 200 response,
+    // then navigates to /me as a fresh same-site request with the cookie included.
+    const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+    const headers = new Headers({ "Content-Type": "text/html" });
+    headers.append(
+      "Set-Cookie",
+      `sessionid=${data.session_key}; Path=/; HttpOnly; SameSite=Lax${secure}`
+    );
+    headers.append(
+      "Set-Cookie",
+      `spotify_code_verifier=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`
+    );
 
-    // Django's session middleware set a `sessionid` cookie on its response.
-    // We forward it so the browser has it for future API calls to Django.
-    const setCookie = djangoRes.headers.get("set-cookie");
-    if (setCookie) {
-      response.headers.set("set-cookie", setCookie);
-    }
-
-    return response;
+    return new Response(
+      `<!DOCTYPE html><html><head>
+        <meta http-equiv="refresh" content="0;url=/me">
+      </head><body>Logging you in...</body></html>`,
+      { status: 200, headers }
+    );
   } catch {
     return NextResponse.redirect(new URL("/?error=auth_failed", request.url));
   }
