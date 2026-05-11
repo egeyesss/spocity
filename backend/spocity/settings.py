@@ -81,7 +81,7 @@ AUTH_USER_MODEL = "core.User"
 # ── Django REST Framework ──────────────────────────────────────────────────────
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication",
+        "core.authentication.CsrfExemptSessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",

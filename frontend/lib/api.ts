@@ -9,9 +9,28 @@ const getBaseUrl = (): string => {
 };
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+    public detail?: unknown
+  ) {
     super(message);
+    this.name = "ApiError";
   }
+}
+
+async function parseErrorMessage(res: Response): Promise<string> {
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    try {
+      const body = await res.json();
+      // DRF uses "detail"; some views use "error" or "message"
+      return body?.detail ?? body?.error ?? body?.message ?? res.statusText;
+    } catch {
+      // JSON parse failed — fall through to statusText
+    }
+  }
+  return res.statusText || `HTTP ${res.status}`;
 }
 
 export async function fetchAPI<T>(
@@ -20,17 +39,24 @@ export async function fetchAPI<T>(
 ): Promise<T> {
   const url = `${getBaseUrl()}${path}`;
 
-  const res = await fetch(url, {
-    credentials: "include",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      credentials: "include",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  } catch (err) {
+    // Network failure (no connection, DNS error, etc.)
+    throw new ApiError(0, "Network error — could not reach the server", err);
+  }
 
   if (!res.ok) {
-    throw new ApiError(res.status, `API ${res.status}: ${url}`);
+    const message = await parseErrorMessage(res);
+    throw new ApiError(res.status, message);
   }
 
   return res.json() as Promise<T>;

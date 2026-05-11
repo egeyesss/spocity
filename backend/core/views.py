@@ -1,16 +1,15 @@
 from datetime import timedelta
 
 import requests as http
-from django.contrib.auth import login
+from django.conf import settings
+from django.contrib.auth import login, logout
 from django.utils import timezone
-from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from django.conf import settings
-from .models import User, SpotifyAccount
+from .models import SpotifyAccount, User
 
 
 @api_view(["GET"])
@@ -19,7 +18,6 @@ def health(request):
     return Response({"status": "ok"})
 
 
-@csrf_exempt
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def spotify_callback(request):
@@ -103,3 +101,11 @@ def me(request):
         "display_name": spotify.display_name,
         "spotify_user_id": spotify.spotify_user_id,
     })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def logout_view(request):
+    logout(request)
+    return Response({"detail": "Logged out."})
+
