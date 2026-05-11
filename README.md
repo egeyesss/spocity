@@ -132,15 +132,6 @@ spocity/
 
 ---
 
-## Key gotchas
-
-- **Postgres port**: mapped to `5433` on the host (not 5432) to avoid conflicts with a local Postgres install. Connect with `psql -h 127.0.0.1 -p 5433 -U spocity`.
-- **Spotify redirect URI**: must be `127.0.0.1`, not `localhost`.
-- **SSR vs browser URLs**: the frontend uses two env vars — `API_URL` (Docker-internal, used by server-side fetches) and `NEXT_PUBLIC_API_URL` (host-accessible, used by browser fetches).
-- **HMR in Docker**: WebSocket hot-reload doesn't work inside Docker. File changes are picked up via polling — the page reloads but you may need to refresh manually.
-
----
-
 ## Architecture
 
 ```
@@ -156,5 +147,3 @@ Django
 
 Postgres  ←  Django ORM
 ```
-
-_Full Mermaid diagram added in Week 8._
