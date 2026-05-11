@@ -3,3 +3,4 @@ djangorestframework>=3.17
 django-environ>=0.13
 django-cors-headers>=4.7
 psycopg2-binary>=2.9
+requests>=2.32
