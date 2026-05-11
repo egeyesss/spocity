@@ -2,7 +2,7 @@
 
 > Your Spotify listening history as a living 3D voxel city. Every artist you listen to becomes a building — heavy plays grow towers, neglected artists decay. Genre districts auto-zone your skyline. Powered by exponential-decay scoring with nightly recomputes.
 
-**Live at**: [spocity.app](https://spocity.app) _(coming soon — Week 8)_
+**Live at**: [spocity.app](https://spocity.app)
 
 ---
 
@@ -37,7 +37,6 @@ cd spocity
 1. Go to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) and create an app (or open the existing one).
 2. Under **Redirect URIs**, add:
    - `http://127.0.0.1:3000/api/auth/callback/spotify` (dev)
-   - `https://spocity.app/api/auth/callback/spotify` (prod — add early so you don't have to touch this again)
 3. Note your **Client ID** and **Client Secret**.
 
 > **Gotcha**: Spotify no longer accepts `localhost` as a redirect URI. Use `127.0.0.1` everywhere.
