@@ -55,7 +55,7 @@ docker compose up
 
 ## Architecture
 
-_Diagram coming in Week 8._
+_Diagram coming soon._
 
 ---
 
@@ -68,9 +68,3 @@ spocity/
 ├── docker-compose.yml
 └── README.md
 ```
-
----
-
-## Resume bullet
-
-> Built Spocity, a Spotify-powered 3D voxel-city visualizer (Next.js + React Three Fiber + Django + Celery). Designed an exponential-decay scoring algorithm with nightly recompute that animates living tier changes in users' cities. Live at spocity.app.

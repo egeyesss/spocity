@@ -1,28 +1,18 @@
-import { fetchAPI } from "@/lib/api";
+import Link from "next/link";
 
-// This component runs on the server — fetch goes through Docker internal DNS
-// (http://backend:8000). Proves SSR → Django works before we build real pages.
-export default async function Home() {
-  let backendStatus = "unreachable";
-  try {
-    const data = await fetchAPI<{ status: string }>("/api/health/");
-    backendStatus = data.status;
-  } catch {
-    backendStatus = "error";
-  }
-
+export default function Home() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-8">
-      <h1 className="text-3xl font-bold">Spocity</h1>
-      <p className="text-zinc-500">
-        Backend:{" "}
-        <span className={backendStatus === "ok" ? "text-green-500" : "text-red-500"}>
-          {backendStatus}
-        </span>
+    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-8">
+      <h1 className="text-4xl font-bold tracking-tight">Spocity</h1>
+      <p className="text-zinc-500 text-center max-w-sm">
+        Your Spotify listening history as a living 3D voxel city.
       </p>
-      <p className="text-xs text-zinc-400">
-        (This page will become the landing page in a later task.)
-      </p>
+      <Link
+        href="/api/auth/login"
+        className="rounded-full bg-green-500 px-6 py-3 text-sm font-semibold text-white hover:bg-green-400 transition-colors"
+      >
+        Connect with Spotify
+      </Link>
     </main>
   );
 }

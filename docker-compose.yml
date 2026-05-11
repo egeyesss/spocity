@@ -7,14 +7,13 @@ services:
       - "3000:3000"
     volumes:
       - ./frontend:/app
-      - /app/node_modules   # named anon volume keeps container's node_modules intact
-      - /app/.next          # same for build cache
+      - /app/node_modules
+      - /app/.next
     env_file:
       - path: ./frontend/.env.local
-        required: false         # won't fail on fresh clone before .env.local is created
+        required: false
     environment:
-      - WATCHPACK_POLLING=true  # hot reload on Mac/Windows Docker volumes
-      # These two override anything in .env.local — they must point to Docker services
+      - WATCHPACK_POLLING=true
       - API_URL=http://backend:8000
       - NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
     depends_on:
@@ -31,9 +30,7 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      # Override DATABASE_URL from .env so it points to the Docker service, not localhost
       - DATABASE_URL=postgres://spocity:spocity@db:5432/spocity
-      # "backend" is the Docker service hostname — Next.js SSR uses it internally
       - ALLOWED_HOSTS=127.0.0.1,localhost,backend
     depends_on:
       db:
@@ -46,7 +43,7 @@ services:
       POSTGRES_USER: spocity
       POSTGRES_PASSWORD: spocity
     ports:
-      - "5433:5432"   # host 5433 → container 5432 (avoids conflict with local Postgres)
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

@@ -32,9 +32,6 @@ def spotify_callback(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # ── Step 1: exchange the code for tokens ──────────────────────────────────
-    # We POST to Spotify with the code + verifier. Spotify hashes the verifier
-    # and checks it matches the challenge sent during the login redirect.
     token_res = http.post(
         "https://accounts.spotify.com/api/token",
         data={
@@ -59,8 +56,6 @@ def spotify_callback(request):
     refresh_token = tokens["refresh_token"]
     expires_at = timezone.now() + timedelta(seconds=tokens["expires_in"])
 
-    # ── Step 2: fetch the Spotify user profile ────────────────────────────────
-    # We need the user's spotify_user_id and display_name to build our records.
     profile_res = http.get(
         "https://api.spotify.com/v1/me",
         headers={"Authorization": f"Bearer {access_token}"},
@@ -78,15 +73,11 @@ def spotify_callback(request):
     display_name = profile.get("display_name") or spotify_user_id
     email = profile.get("email", "")
 
-    # ── Step 3: upsert User + SpotifyAccount ──────────────────────────────────
-    # get_or_create avoids duplicate users on repeated logins.
-    # We use spotify_user_id as the username — it's unique across Spotify.
     user, _ = User.objects.get_or_create(
         username=spotify_user_id,
         defaults={"email": email},
     )
 
-    # update_or_create refreshes tokens on every login — keeps them fresh.
     SpotifyAccount.objects.update_or_create(
         user=user,
         defaults={
@@ -98,21 +89,15 @@ def spotify_callback(request):
         },
     )
 
-    # ── Step 4: open a Django session ─────────────────────────────────────────
-    # login() writes the user ID into request.session and marks it modified.
-    # We then force-save and return the session key explicitly in the body so
-    # Next.js can set the cookie itself — more reliable than forwarding Set-Cookie headers.
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
     request.session.save()
-    session_key = request.session.session_key
 
-    return Response({"display_name": display_name, "session_key": session_key})
+    return Response({"display_name": display_name, "session_key": request.session.session_key})
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def me(request):
-    """Returns the current session's user. Frontend calls this to check auth state."""
     spotify = request.user.spotify_account
     return Response({
         "display_name": spotify.display_name,

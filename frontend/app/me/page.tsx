@@ -30,9 +30,7 @@ export default async function MePage() {
     <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-8">
       <h1 className="text-3xl font-bold">Hello, {user.display_name}</h1>
       <p className="text-zinc-500">Your city is being built...</p>
-      <p className="text-xs text-zinc-400">
-        (This page will become the 3D city in Week 4.)
-      </p>
+      <p className="text-zinc-500">Your city is being built.</p>
     </main>
   );
 }

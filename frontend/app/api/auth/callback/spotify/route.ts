@@ -5,22 +5,16 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const error = searchParams.get("error");
 
-  // User denied access on Spotify's page.
   if (error || !code) {
     return NextResponse.redirect(new URL("/?error=spotify_denied", request.url));
   }
 
-  // Read the verifier we stored in the login route.
-  // If it's missing the cookie expired or someone hit this URL directly.
   const codeVerifier = request.cookies.get("spotify_code_verifier")?.value;
   if (!codeVerifier) {
     return NextResponse.redirect(new URL("/?error=session_expired", request.url));
   }
 
   try {
-    // Hand off to Django. Django does the token exchange with Spotify,
-    // creates/updates the user in the DB, and opens a session.
-    // We use API_URL (Docker internal DNS) because this runs server-side.
     const djangoRes = await fetch(`${process.env.API_URL}/api/auth/callback/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -31,13 +25,10 @@ export async function GET(request: NextRequest) {
       throw new Error(`Django ${djangoRes.status}`);
     }
 
-    // Django returns the session key in the body.
     const data = await djangoRes.json() as { session_key: string };
 
-    // Browsers block Set-Cookie on redirect responses mid-cross-site chain
-    // (Spotify → us → /me). Returning a 200 with a meta-refresh breaks the
-    // chain: the browser stores the cookie from OUR origin's 200 response,
-    // then navigates to /me as a fresh same-site request with the cookie included.
+    // Returning 200 + meta-refresh instead of a redirect so that browsers
+    // apply Set-Cookie before navigating (cross-site redirects drop cookies).
     const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
     const headers = new Headers({ "Content-Type": "text/html" });
     headers.append(
