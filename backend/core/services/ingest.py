@@ -31,6 +31,7 @@ from ..models import (
     SpotifyAccount,
     User,
 )
+from . import lastfm
 from .scoring import collect_positions, compute_seed_score, score_to_tier
 from .spotify import BaseSpotifyClient, get_client
 
@@ -64,16 +65,30 @@ def _upsert_artist(
     spotify_data: dict[str, Any],
     bucket_lookup: dict[str, GenreBucket],
     unmapped_collector: list[str],
+    lastfm_client: lastfm.BaseLastfmClient | None = None,
 ) -> tuple[Artist, bool]:
     """Upsert one Spotify artist payload into the Artist table.
+
+    Spotify removed the `genres` field from its artist objects in late 2024.
+    When Spotify gives us nothing, we fall back to Last.fm's user-submitted
+    tags so the rollup still has something to classify. The DB stores
+    whatever source actually produced data — the classifier doesn't care.
 
     Returns (artist, created). Unmapped genre tags are appended to
     `unmapped_collector` so the caller can flush them in one DB call.
     """
     spotify_id = spotify_data["id"]
-    genres = spotify_data.get("genres", []) or []
+    name = spotify_data.get("name", "")
+    genres = spotify_data.get("genres") or []
     images = spotify_data.get("images") or []
     image_url = images[0]["url"] if images else ""
+
+    if not genres and lastfm_client is not None and name:
+        try:
+            genres = lastfm_client.get_artist_tags(name)
+        except lastfm.LastfmAPIError:
+            logger.exception("Last.fm lookup failed for %s", name)
+            genres = []
 
     bucket_slug, unmapped = genre_rollup.classify(genres)
     unmapped_collector.extend(unmapped)
@@ -81,7 +96,7 @@ def _upsert_artist(
     artist, created = Artist.objects.update_or_create(
         spotify_id=spotify_id,
         defaults={
-            "name": spotify_data.get("name", "")[:255],
+            "name": name[:255],
             "image_url": image_url[:500],
             "genres": genres,
             "primary_genre_bucket": bucket_lookup.get(bucket_slug),
@@ -91,7 +106,9 @@ def _upsert_artist(
 
 
 def run_initial_ingest(
-    user: User, client: BaseSpotifyClient | None = None
+    user: User,
+    client: BaseSpotifyClient | None = None,
+    lastfm_client: lastfm.BaseLastfmClient | None = None,
 ) -> InitialIngestResult:
     """Fetch top artists across all three time ranges, upsert them, seed
     ArtistScores.
@@ -101,6 +118,7 @@ def run_initial_ingest(
     """
     account: SpotifyAccount = user.spotify_account
     client = client or get_client(account)
+    lastfm_client = lastfm_client or lastfm.get_client()
 
     top_lists: dict[str, list[dict]] = {}
     for tr in TIME_RANGES:
@@ -118,7 +136,9 @@ def run_initial_ingest(
             if spotify_id in seen_ids:
                 continue
             seen_ids.add(spotify_id)
-            artist, _ = _upsert_artist(item, bucket_lookup, unmapped_tags)
+            artist, _ = _upsert_artist(
+                item, bucket_lookup, unmapped_tags, lastfm_client
+            )
             artist_by_spotify_id[spotify_id] = artist
 
     # Pass 2: compute per-artist seed score from rank positions.
@@ -158,7 +178,9 @@ def run_initial_ingest(
 
 
 def run_recent_ingest(
-    user: User, client: BaseSpotifyClient | None = None
+    user: User,
+    client: BaseSpotifyClient | None = None,
+    lastfm_client: lastfm.BaseLastfmClient | None = None,
 ) -> RecentIngestResult:
     """Fetch /recently-played (last 50 tracks) and insert PlayHistory rows.
 
@@ -168,6 +190,7 @@ def run_recent_ingest(
     """
     account: SpotifyAccount = user.spotify_account
     client = client or get_client(account)
+    lastfm_client = lastfm_client or lastfm.get_client()
 
     items = client.get_recently_played(limit=50)
     bucket_lookup = _bucket_lookup()
@@ -204,11 +227,12 @@ def run_recent_ingest(
                     {
                         "id": spotify_id,
                         "name": primary.get("name", ""),
-                        "genres": [],  # rollup runs on initial-ingest
+                        "genres": [],
                         "images": [],
                     },
                     bucket_lookup,
                     unmapped_tags,
+                    lastfm_client,
                 )
                 artists_upserted += 1
             artist_cache[spotify_id] = artist

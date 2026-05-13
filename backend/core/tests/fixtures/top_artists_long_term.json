@@ -3,19 +3,19 @@
     {
       "id": "artist_kendrick",
       "name": "Kendrick Lamar",
-      "genres": ["west coast rap", "hip hop"],
+      "genres": [],
       "images": [{"url": "https://example.com/kendrick.jpg"}]
     },
     {
       "id": "artist_radiohead",
       "name": "Radiohead",
-      "genres": ["alternative rock", "art rock", "permanent wave"],
+      "genres": [],
       "images": [{"url": "https://example.com/radiohead.jpg"}]
     },
     {
       "id": "artist_taylor",
       "name": "Taylor Swift",
-      "genres": ["pop", "pop dance"],
+      "genres": [],
       "images": [{"url": "https://example.com/taylor.jpg"}]
     }
   ]

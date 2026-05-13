@@ -40,7 +40,7 @@ def user_with_account(db):
     return user
 
 
-@override_settings(SPOTIFY_USE_STUB=True)
+@override_settings(SPOTIFY_USE_STUB=True, LASTFM_USE_STUB=True)
 @pytest.mark.django_db
 def test_initial_ingest_creates_artists_with_correct_buckets(user_with_account):
     result = run_initial_ingest(user_with_account)
@@ -64,7 +64,7 @@ def test_initial_ingest_creates_artists_with_correct_buckets(user_with_account):
     assert unknown.primary_genre_bucket.slug == "other"
 
 
-@override_settings(SPOTIFY_USE_STUB=True)
+@override_settings(SPOTIFY_USE_STUB=True, LASTFM_USE_STUB=True)
 @pytest.mark.django_db
 def test_initial_ingest_seeds_scores_and_tiers(user_with_account):
     run_initial_ingest(user_with_account)
@@ -83,7 +83,7 @@ def test_initial_ingest_seeds_scores_and_tiers(user_with_account):
     assert radiohead_score.score < drake_score.score
 
 
-@override_settings(SPOTIFY_USE_STUB=True)
+@override_settings(SPOTIFY_USE_STUB=True, LASTFM_USE_STUB=True)
 @pytest.mark.django_db
 def test_initial_ingest_is_idempotent(user_with_account):
     first = run_initial_ingest(user_with_account)
@@ -97,7 +97,7 @@ def test_initial_ingest_is_idempotent(user_with_account):
     assert Artist.objects.count() == first.artists_upserted
 
 
-@override_settings(SPOTIFY_USE_STUB=True)
+@override_settings(SPOTIFY_USE_STUB=True, LASTFM_USE_STUB=True)
 @pytest.mark.django_db
 def test_initial_ingest_logs_unmapped_genre_tags(user_with_account):
     run_initial_ingest(user_with_account)
@@ -108,7 +108,7 @@ def test_initial_ingest_logs_unmapped_genre_tags(user_with_account):
     ).exists()
 
 
-@override_settings(SPOTIFY_USE_STUB=True)
+@override_settings(SPOTIFY_USE_STUB=True, LASTFM_USE_STUB=True)
 @pytest.mark.django_db
 def test_recent_ingest_inserts_play_history(user_with_account):
     # Need artists upserted first so /recently-played can FK to them
@@ -120,7 +120,7 @@ def test_recent_ingest_inserts_play_history(user_with_account):
     assert PlayHistory.objects.filter(user=user_with_account).count() == 3
 
 
-@override_settings(SPOTIFY_USE_STUB=True)
+@override_settings(SPOTIFY_USE_STUB=True, LASTFM_USE_STUB=True)
 @pytest.mark.django_db
 def test_recent_ingest_dedup_via_unique_constraint(user_with_account):
     run_initial_ingest(user_with_account)
@@ -133,21 +133,22 @@ def test_recent_ingest_dedup_via_unique_constraint(user_with_account):
     assert PlayHistory.objects.filter(user=user_with_account).count() == 3
 
 
-@override_settings(SPOTIFY_USE_STUB=True)
+@override_settings(SPOTIFY_USE_STUB=True, LASTFM_USE_STUB=True)
 @pytest.mark.django_db
 def test_recent_ingest_creates_missing_artist_from_minimal_payload(
     user_with_account,
 ):
     """If /recently-played returns a track from an artist we haven't seen
-    via /top-artists yet, the ingest should still upsert that artist (with
-    an empty genres list — rollup will run on the next initial-ingest)."""
+    via /top-artists yet, the ingest should still upsert that artist with
+    Last.fm-sourced genre tags (Spotify's recently-played payload doesn't
+    include genres anyway)."""
     # Skip initial ingest — so /recently-played sees artists we haven't
     # seen before.
     result = run_recent_ingest(user_with_account)
 
     assert result.plays_inserted == 3
     assert result.artists_upserted == 3
-    # All three should exist with empty genre rollup → 'other' bucket
+    # Last.fm stub has tags for these names → real bucket, not 'other'
     drake = Artist.objects.get(spotify_id="artist_drake")
-    assert drake.primary_genre_bucket.slug == "other"
-    assert drake.genres == []
+    assert drake.primary_genre_bucket.slug == "hip-hop"
+    assert "hip hop" in drake.genres

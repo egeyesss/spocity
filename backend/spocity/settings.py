@@ -110,6 +110,13 @@ SPOTIFY_REDIRECT_URI = env(
 # returns a fixture-backed stub instead of hitting the live API.
 SPOTIFY_USE_STUB = env.bool("SPOTIFY_USE_STUB", default=False)
 
+# ── Last.fm ────────────────────────────────────────────────────────────────────
+# Spotify removed artist genres from /me/top/artists and /artists in late
+# 2024, so we source genre tags from Last.fm instead. Free key from
+# https://www.last.fm/api/account/create — anonymous reads only, no OAuth.
+LASTFM_API_KEY = env("LASTFM_API_KEY", default="")
+LASTFM_USE_STUB = env.bool("LASTFM_USE_STUB", default=False)
+
 # ── Now-playing cache TTL ──────────────────────────────────────────────────────
 # Spotify rate-limits /currently-playing aggressively; the frontend polls
 # every 30s, so a matching backend cache TTL avoids 1:1 thrash.
