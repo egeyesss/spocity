@@ -173,6 +173,19 @@ class ArtistScore(models.Model):
     tier = models.CharField(
         max_length=20, choices=Tier.choices, default=Tier.SHACK
     )
+    # Hybrid C seed: the Day-1 tier-floor anchor (Shack=0, House=50,
+    # Apartment=200, Skyscraper=1500) assigned at initial ingest based on
+    # the artist's Spotify aggregate rank. Score = seed_score + observed
+    # play count, no decay. See decisions.md §6.
+    seed_score = models.FloatField(default=0.0)
+    # When the seed was set. Retained from the original decay model for
+    # potential future use (e.g., a v2 weathering signal); not load-bearing
+    # under Hybrid C.
+    seed_assigned_at = models.DateTimeField(null=True, blank=True)
+    # Most recent play_at observed for this (user, artist). Drives the
+    # Week 7 weathering visual — a Skyscraper unplayed for months gets
+    # vines, but its tier doesn't change.
+    last_played_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

@@ -5,6 +5,10 @@ django-cors-headers>=4.7
 psycopg2-binary>=2.9
 requests>=2.32
 
+# ── async/background ──────────────────────────────────────────────────────────
+celery>=5.4
+redis>=5.0
+
 # ── dev/test ───────────────────────────────────────────────────────────────────
 pytest>=8.3
 pytest-django>=4.9

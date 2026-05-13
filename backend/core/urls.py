@@ -9,4 +9,5 @@ urlpatterns = [
     path("ingest/initial/", views.initial_ingest),
     path("ingest/recent/", views.recent_ingest),
     path("now-playing/", views.now_playing),
+    path("admin/recompute/<int:user_id>/", views.admin_recompute),
 ]

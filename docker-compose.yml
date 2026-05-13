@@ -57,5 +57,43 @@ services:
     ports:
       - "6379:6379"
 
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A spocity worker --loglevel=info
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgres://spocity:spocity@db:5432/spocity
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - ALLOWED_HOSTS=127.0.0.1,localhost,backend
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A spocity beat --loglevel=info
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgres://spocity:spocity@db:5432/spocity
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - ALLOWED_HOSTS=127.0.0.1,localhost,backend
+    depends_on:
+      - redis
+      - worker
+
 volumes:
   postgres_data:
