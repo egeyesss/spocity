@@ -106,3 +106,11 @@ SPOTIFY_REDIRECT_URI = env(
     "SPOTIFY_REDIRECT_URI",
     default="http://127.0.0.1:3000/api/auth/callback/spotify",
 )
+# Tests flip this on via @override_settings so the SpotifyClient factory
+# returns a fixture-backed stub instead of hitting the live API.
+SPOTIFY_USE_STUB = env.bool("SPOTIFY_USE_STUB", default=False)
+
+# ── Now-playing cache TTL ──────────────────────────────────────────────────────
+# Spotify rate-limits /currently-playing aggressively; the frontend polls
+# every 30s, so a matching backend cache TTL avoids 1:1 thrash.
+NOW_PLAYING_CACHE_TTL = 25

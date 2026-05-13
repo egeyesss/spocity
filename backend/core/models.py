@@ -61,9 +61,173 @@ class SpotifyAccount(models.Model):
         data = res.json()
         self.access_token = data["access_token"]
         self.expires_at = timezone.now() + timedelta(seconds=data["expires_in"])
-        # Spotify may rotate the refresh token — always store the latest one.
         if "refresh_token" in data:
             self.refresh_token = data["refresh_token"]
         self.save(update_fields=["access_token", "refresh_token", "expires_at"])
 
         return self.access_token
+
+
+class GenreBucket(models.Model):
+    """One of the 10 genre districts in the city (plus 'other' overflow).
+
+    Seeded via data migration. Color palette is a JSON list of hex strings
+    used to tint voxel buildings in that district.
+    """
+
+    slug = models.SlugField(max_length=40, unique=True)
+    label = models.CharField(max_length=80)
+    color_palette = models.JSONField(default=list)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "slug"]
+
+    def __str__(self):
+        return self.label
+
+
+class Artist(models.Model):
+    """A Spotify artist. Shared across users (one row per Spotify artist id).
+
+    primary_genre_bucket is the rollup result from the genre taxonomy mapper.
+    A null value means rollup hasn't run yet; an 'other' value means rollup
+    ran but no rule matched.
+    """
+
+    spotify_id = models.CharField(max_length=64, unique=True)
+    name = models.CharField(max_length=255)
+    image_url = models.URLField(max_length=500, blank=True)
+    genres = models.JSONField(default=list)
+    primary_genre_bucket = models.ForeignKey(
+        GenreBucket,
+        on_delete=models.SET_NULL,
+        related_name="artists",
+        null=True,
+        blank=True,
+    )
+
+    def __str__(self):
+        return self.name
+
+
+class PlayHistory(models.Model):
+    """A single play of a track by a user, sourced from Spotify's
+    recently-played endpoint.
+
+    The unique constraint on (user, played_at, track_id) prevents duplicate
+    inserts when the recent-plays poller runs and Spotify still returns the
+    same tracks. The (user, artist, played_at) index supports the per-artist
+    decayed-score recompute in Week 3.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="play_history",
+    )
+    artist = models.ForeignKey(
+        Artist, on_delete=models.CASCADE, related_name="plays"
+    )
+    track_id = models.CharField(max_length=64)
+    played_at = models.DateTimeField()
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "artist", "played_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "played_at", "track_id"],
+                name="unique_play_per_user_time_track",
+            ),
+        ]
+        ordering = ["-played_at"]
+
+
+class Tier(models.TextChoices):
+    SHACK = "shack", "Shack"
+    HOUSE = "house", "House"
+    APARTMENT = "apartment", "Apartment"
+    OFFICE = "office", "Office"
+    SKYSCRAPER = "skyscraper", "Skyscraper"
+    LANDMARK = "landmark", "Landmark"
+
+
+class ArtistScore(models.Model):
+    """The current decayed score + tier for a (user, artist) pair.
+
+    One row per (user, artist). Recomputed nightly by the Celery beat task
+    in Week 3. The TierEvent table records changes between recomputes.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="artist_scores",
+    )
+    artist = models.ForeignKey(
+        Artist, on_delete=models.CASCADE, related_name="user_scores"
+    )
+    score = models.FloatField(default=0.0)
+    tier = models.CharField(
+        max_length=20, choices=Tier.choices, default=Tier.SHACK
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "artist"], name="unique_artist_score_per_user"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "-score"]),
+        ]
+
+
+class TierEvent(models.Model):
+    """A recorded tier change for a (user, artist), captured by the nightly
+    recompute. Consumed by the frontend's tier-change animation system in
+    Week 7 — once an event has been animated, set `delivered_at` so it isn't
+    replayed on the next visit.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="tier_events",
+    )
+    artist = models.ForeignKey(
+        Artist, on_delete=models.CASCADE, related_name="tier_events"
+    )
+    prev_tier = models.CharField(max_length=20, choices=Tier.choices)
+    new_tier = models.CharField(max_length=20, choices=Tier.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "delivered_at"]),
+        ]
+        ordering = ["-created_at"]
+
+
+class GenreUnmapped(models.Model):
+    """Production feedback loop for the genre taxonomy.
+
+    Every Spotify genre tag that didn't match any rollup rule gets logged
+    here with a hit count. Periodically review this table and either add a
+    new rule for the high-traffic unmatched tags or accept them as 'other'.
+    """
+
+    tag = models.CharField(max_length=120, unique=True)
+    hit_count = models.PositiveIntegerField(default=1)
+    first_seen = models.DateTimeField(auto_now_add=True)
+    last_seen = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-hit_count"]
+
+    def __str__(self):
+        return f"{self.tag} ({self.hit_count})"

@@ -35,7 +35,7 @@ export default async function MePage() {
       <main className="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center">
         <h1 className="text-4xl font-bold">Hello, {user.display_name}</h1>
         <p className="text-zinc-500">
-          Your city is coming in Week 4. Hang tight.
+          Your city is coming soon. Hang tight.
         </p>
 
         {/* Placeholder for the Week 4 <CityCanvas /> */}

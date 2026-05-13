@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "id": "artist_kendrick",
+      "name": "Kendrick Lamar",
+      "genres": ["west coast rap", "hip hop"],
+      "images": [{"url": "https://example.com/kendrick.jpg"}]
+    },
+    {
+      "id": "artist_radiohead",
+      "name": "Radiohead",
+      "genres": ["alternative rock", "art rock", "permanent wave"],
+      "images": [{"url": "https://example.com/radiohead.jpg"}]
+    },
+    {
+      "id": "artist_taylor",
+      "name": "Taylor Swift",
+      "genres": ["pop", "pop dance"],
+      "images": [{"url": "https://example.com/taylor.jpg"}]
+    }
+  ]
+}

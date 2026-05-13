@@ -1,15 +1,19 @@
+from dataclasses import asdict
 from datetime import timedelta
 
 import requests as http
 from django.conf import settings
 from django.contrib.auth import login, logout
+from django.core.cache import cache
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import SpotifyAccount, User
+from .models import SpotifyAccount, SpotifyTokenRefreshError, User
+from .services.ingest import run_initial_ingest, run_recent_ingest
+from .services.spotify import SpotifyAPIError, get_client
 
 
 @api_view(["GET"])
@@ -108,4 +112,98 @@ def me(request):
 def logout_view(request):
     logout(request)
     return Response({"detail": "Logged out."})
+
+
+# ── Spotify ingest endpoints ──────────────────────────────────────────────────
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def initial_ingest(request):
+    """Pull top artists across all three time ranges, upsert them, seed
+    ArtistScores. Safe to call multiple times — idempotent."""
+    try:
+        result = run_initial_ingest(request.user)
+    except SpotifyTokenRefreshError:
+        return Response(
+            {"error": "spotify_reauth_required"},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+    except SpotifyAPIError as exc:
+        return Response(
+            {"error": "spotify_api_error", "detail": str(exc)},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
+    return Response(asdict(result))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def recent_ingest(request):
+    """Pull /recently-played (last 50 tracks) and insert PlayHistory rows.
+    Week 3 promotes this to a Celery beat task; manual trigger for now."""
+    try:
+        result = run_recent_ingest(request.user)
+    except SpotifyTokenRefreshError:
+        return Response(
+            {"error": "spotify_reauth_required"},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+    except SpotifyAPIError as exc:
+        return Response(
+            {"error": "spotify_api_error", "detail": str(exc)},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
+    return Response(asdict(result))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def now_playing(request):
+    """Return what the user is currently listening to, or null if nothing.
+
+    Cached per-user for NOW_PLAYING_CACHE_TTL seconds so the frontend's 30s
+    polling interval doesn't hammer Spotify (their /currently-playing
+    endpoint has tight rate limits compared to the rest of the API).
+    """
+    cache_key = f"now_playing:{request.user.id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        # Cache stores either the payload dict or the sentinel "__none__".
+        return Response(None if cached == "__none__" else cached)
+
+    try:
+        client = get_client(request.user.spotify_account)
+        data = client.get_currently_playing()
+    except SpotifyTokenRefreshError:
+        return Response(
+            {"error": "spotify_reauth_required"},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+    except SpotifyAPIError as exc:
+        return Response(
+            {"error": "spotify_api_error", "detail": str(exc)},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
+
+    if not data or not data.get("item"):
+        cache.set(cache_key, "__none__", settings.NOW_PLAYING_CACHE_TTL)
+        return Response(None)
+
+    item = data["item"]
+    artists = item.get("artists") or []
+    album = item.get("album") or {}
+    album_images = album.get("images") or []
+
+    payload = {
+        "track_id": item.get("id"),
+        "track_name": item.get("name"),
+        "artist_spotify_id": artists[0]["id"] if artists else None,
+        "artist_name": artists[0]["name"] if artists else None,
+        "album_image": album_images[0]["url"] if album_images else None,
+        "progress_ms": data.get("progress_ms"),
+        "duration_ms": item.get("duration_ms"),
+        "is_playing": data.get("is_playing", False),
+    }
+    cache.set(cache_key, payload, settings.NOW_PLAYING_CACHE_TTL)
+    return Response(payload)
 

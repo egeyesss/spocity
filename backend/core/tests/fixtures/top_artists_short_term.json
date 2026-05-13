@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "id": "artist_drake",
+      "name": "Drake",
+      "genres": ["canadian hip hop", "hip hop", "rap"],
+      "images": [{"url": "https://example.com/drake.jpg"}]
+    },
+    {
+      "id": "artist_taylor",
+      "name": "Taylor Swift",
+      "genres": ["pop", "pop dance"],
+      "images": [{"url": "https://example.com/taylor.jpg"}]
+    },
+    {
+      "id": "artist_phoebe",
+      "name": "Phoebe Bridgers",
+      "genres": ["indie folk", "singer-songwriter"],
+      "images": []
+    },
+    {
+      "id": "artist_unknown",
+      "name": "Some Microgenre Artist",
+      "genres": ["totally-made-up-microgenre"],
+      "images": []
+    }
+  ]
+}

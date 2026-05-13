@@ -1,0 +1,13 @@
+{
+  "is_playing": true,
+  "progress_ms": 45000,
+  "item": {
+    "id": "track_god_plan",
+    "name": "God's Plan",
+    "duration_ms": 198000,
+    "artists": [{"id": "artist_drake", "name": "Drake"}],
+    "album": {
+      "images": [{"url": "https://example.com/album.jpg"}]
+    }
+  }
+}

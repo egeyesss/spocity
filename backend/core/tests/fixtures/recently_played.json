@@ -1,0 +1,30 @@
+{
+  "items": [
+    {
+      "played_at": "2026-05-12T10:30:00.000Z",
+      "track": {
+        "id": "track_god_plan",
+        "name": "God's Plan",
+        "artists": [{"id": "artist_drake", "name": "Drake"}]
+      }
+    },
+    {
+      "played_at": "2026-05-12T10:25:00.000Z",
+      "track": {
+        "id": "track_humble",
+        "name": "HUMBLE.",
+        "artists": [{"id": "artist_kendrick", "name": "Kendrick Lamar"}]
+      }
+    },
+    {
+      "played_at": "2026-05-12T10:20:00.000Z",
+      "track": {
+        "id": "track_motion_sickness",
+        "name": "Motion Sickness",
+        "artists": [
+          {"id": "artist_phoebe", "name": "Phoebe Bridgers"}
+        ]
+      }
+    }
+  ]
+}

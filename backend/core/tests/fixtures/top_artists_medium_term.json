@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "id": "artist_drake",
+      "name": "Drake",
+      "genres": ["canadian hip hop", "hip hop", "rap"],
+      "images": [{"url": "https://example.com/drake.jpg"}]
+    },
+    {
+      "id": "artist_kendrick",
+      "name": "Kendrick Lamar",
+      "genres": ["west coast rap", "hip hop"],
+      "images": [{"url": "https://example.com/kendrick.jpg"}]
+    },
+    {
+      "id": "artist_phoebe",
+      "name": "Phoebe Bridgers",
+      "genres": ["indie folk", "singer-songwriter"],
+      "images": []
+    }
+  ]
+}
