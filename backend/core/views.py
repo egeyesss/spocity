@@ -8,11 +8,12 @@ from django.core.cache import cache
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 
 from .models import SpotifyAccount, SpotifyTokenRefreshError, User
 from .services.ingest import run_initial_ingest, run_recent_ingest
+from .services.recompute import recompute_user
 from .services.spotify import SpotifyAPIError, get_client
 
 
@@ -206,4 +207,32 @@ def now_playing(request):
     }
     cache.set(cache_key, payload, settings.NOW_PLAYING_CACHE_TTL)
     return Response(payload)
+
+
+# ── Admin / staff-only endpoints ──────────────────────────────────────────────
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def admin_recompute(request, user_id: int):
+    """Force-run the nightly recompute for a single user. Staff only.
+
+    Used to verify scoring changes against real DB state without waiting
+    for the 3am beat job. Synchronous — returns the recompute summary
+    inline.
+    """
+    try:
+        target = User.objects.get(pk=user_id)
+    except User.DoesNotExist:
+        return Response(
+            {"error": "user_not_found"}, status=status.HTTP_404_NOT_FOUND
+        )
+    result = recompute_user(target)
+    return Response(
+        {
+            "user_id": user_id,
+            "scores_updated": result.scores_updated,
+            "tier_events_created": result.tier_events_created,
+        }
+    )
 

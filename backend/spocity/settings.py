@@ -121,3 +121,34 @@ LASTFM_USE_STUB = env.bool("LASTFM_USE_STUB", default=False)
 # Spotify rate-limits /currently-playing aggressively; the frontend polls
 # every 30s, so a matching backend cache TTL avoids 1:1 thrash.
 NOW_PLAYING_CACHE_TTL = 25
+
+# ── Celery / Redis ─────────────────────────────────────────────────────────────
+# Broker and result backend both point at the `redis` service in docker-compose.
+# In tests we run with CELERY_TASK_ALWAYS_EAGER so tasks execute synchronously
+# in the test process — no worker needed.
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://redis:6379/0")
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://redis:6379/0")
+CELERY_TIMEZONE = "UTC"
+CELERY_TASK_TRACK_STARTED = True
+# When True, .delay() runs the task immediately in the calling process. Tests
+# flip this on via @override_settings; not set by default in dev/prod.
+CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
+CELERY_TASK_EAGER_PROPAGATES = True
+
+# Beat schedule — periodic tasks. Defined here (rather than in tasks.py)
+# so beat config lives next to other deployment settings.
+from celery.schedules import crontab  # noqa: E402
+
+CELERY_BEAT_SCHEDULE = {
+    "poll-recently-played-hourly": {
+        "task": "core.tasks.poll_recently_played_for_active_users",
+        # Top of every hour. Spotify's /recently-played returns the last 50
+        # tracks, so hourly polling captures everything for any normal listener.
+        "schedule": crontab(minute=0),
+    },
+    "nightly-recompute": {
+        "task": "core.tasks.nightly_recompute_all_users",
+        # 3am UTC — quiet hours for our likely user base; cheap to shift later.
+        "schedule": crontab(hour=3, minute=0),
+    },
+}
