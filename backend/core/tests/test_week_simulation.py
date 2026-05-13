@@ -1,18 +1,8 @@
-"""Integration test: simulate a week of activity, assert an artist climbs
-a tier.
+"""Integration test: a user listens, the city grows.
 
-This is the test that proves the whole scoring pipeline hangs together —
-not just the decay function in isolation, not just the recompute, but the
-realistic flow:
-
-    Day 0: initial ingest seeds a user's top artists at their starting tiers.
-    Days 1-7: user plays one specific artist heavily (say, 5 plays per day).
-    Day 8: recompute → the heavily-played artist climbs at least one tier
-    and a TierEvent is recorded.
-
-We sidestep the actual Spotify API by writing ArtistScore + PlayHistory
-rows directly with controlled timestamps, then call recompute_user with an
-injected `now`.
+Under Hybrid C, the city grows monotonically with observed plays. There's
+no decay path to test anymore — the test instead validates the *full*
+ingest → recompute → tier-event flow against realistic listening patterns.
 """
 
 from __future__ import annotations
@@ -31,11 +21,14 @@ from core.models import (
     TierEvent,
 )
 from core.services.recompute import recompute_user
+from core.services.scoring import (
+    APARTMENT_FLOOR,
+    HOUSE_FLOOR,
+    SKYSCRAPER_FLOOR,
+)
 
 User = get_user_model()
-
-DAY_0 = datetime(2026, 5, 1, 12, 0, 0, tzinfo=dt_tz.utc)
-DAY_8 = DAY_0 + timedelta(days=8)
+NOW = datetime.now(dt_tz.utc)
 
 
 @pytest.fixture
@@ -53,102 +46,86 @@ def buckets(db):
 
 @pytest.fixture
 def artists(db, buckets):
-    """Three artists: one heavy listener, one steady, one dormant."""
     return {
-        "heavy": Artist.objects.create(
-            spotify_id="heavy", name="Heavy Hitter",
+        "seeded_sky": Artist.objects.create(
+            spotify_id="sky", name="Day-1 Favorite",
             primary_genre_bucket=buckets["pop"],
         ),
-        "steady": Artist.objects.create(
-            spotify_id="steady", name="Steady Plays",
+        "seeded_house": Artist.objects.create(
+            spotify_id="hse", name="Day-1 Top-50",
             primary_genre_bucket=buckets["rock"],
         ),
-        "dormant": Artist.objects.create(
-            spotify_id="dormant", name="Old Favorite",
+        "cold_pick": Artist.objects.create(
+            spotify_id="cld", name="New Discovery",
             primary_genre_bucket=buckets["pop"],
         ),
     }
 
 
-def _seed_score(user, artist, seed, tier):
+def _seed(user, artist, score, tier):
     ArtistScore.objects.create(
-        user=user,
-        artist=artist,
-        score=seed,
-        tier=tier,
-        seed_score=seed,
-        seed_assigned_at=DAY_0,
+        user=user, artist=artist,
+        score=score, tier=tier, seed_score=score,
     )
 
 
-def _plays(user, artist, played_at_list):
-    for i, played_at in enumerate(played_at_list):
+def _plays(user, artist, n):
+    for i in range(n):
         PlayHistory.objects.create(
-            user=user,
-            artist=artist,
+            user=user, artist=artist,
             track_id=f"{artist.spotify_id}-{i}",
-            played_at=played_at,
+            played_at=NOW - timedelta(hours=i),
         )
 
 
-def test_week_of_heavy_listening_climbs_a_tier(user, artists):
-    """The full pipeline: seed three artists, play one heavily, recompute,
-    assert the heavy artist moved up at least one tier."""
-    # Day 0 — initial seeding.
-    _seed_score(user, artists["heavy"], seed=8.0, tier=Tier.SHACK)
-    _seed_score(user, artists["steady"], seed=8.0, tier=Tier.SHACK)
-    _seed_score(user, artists["dormant"], seed=8.0, tier=Tier.SHACK)
+def test_seeded_favorite_stays_seeded_cold_pick_can_climb_to_match(user, artists):
+    """A user signs up with a Top-3 favorite (seeded at Skyscraper) and a
+    Top-50 favorite (seeded at House). They then discover a new artist and
+    play it heavily. Under Hybrid C:
+        - The seeded favorites keep their Day-1 tiers (no decay).
+        - The cold pick can climb based purely on observed plays.
+    """
+    _seed(user, artists["seeded_sky"], score=SKYSCRAPER_FLOOR, tier=Tier.SKYSCRAPER)
+    _seed(user, artists["seeded_house"], score=HOUSE_FLOOR, tier=Tier.HOUSE)
+    _seed(user, artists["cold_pick"], score=0.0, tier=Tier.SHACK)
 
-    # Days 1-7 — listener plays "heavy" 5 times per day.
-    heavy_plays = []
-    for day in range(1, 8):
-        for hour in (8, 11, 14, 17, 20):
-            heavy_plays.append(
-                DAY_0 + timedelta(days=day, hours=hour)
-            )
-    _plays(user, artists["heavy"], heavy_plays)
+    # User binges the cold pick: 250 plays across recent weeks.
+    _plays(user, artists["cold_pick"], n=250)
+    # User also keeps light contact with the seeded house artist (10 plays).
+    _plays(user, artists["seeded_house"], n=10)
+    # User does NOT play the seeded sky artist at all (Laufey scenario).
 
-    # Steady gets one play a day.
-    _plays(
-        user,
-        artists["steady"],
-        [DAY_0 + timedelta(days=d, hours=12) for d in range(1, 8)],
-    )
-
-    # Dormant gets zero plays.
-
-    # Day 8 — nightly recompute fires.
-    result = recompute_user(user, now=DAY_8)
+    result = recompute_user(user)
     assert result.scores_updated == 3
 
-    heavy_score = ArtistScore.objects.get(user=user, artist=artists["heavy"])
-    steady_score = ArtistScore.objects.get(user=user, artist=artists["steady"])
-    dormant_score = ArtistScore.objects.get(user=user, artist=artists["dormant"])
+    sky = ArtistScore.objects.get(user=user, artist=artists["seeded_sky"])
+    hse = ArtistScore.objects.get(user=user, artist=artists["seeded_house"])
+    cld = ArtistScore.objects.get(user=user, artist=artists["cold_pick"])
 
-    # Property 1: heavy has the highest score.
-    assert heavy_score.score > steady_score.score > dormant_score.score
+    # Skyscraper-seeded favorite stays Skyscraper despite zero recent plays.
+    assert sky.tier == Tier.SKYSCRAPER
+    assert sky.score == pytest.approx(SKYSCRAPER_FLOOR)
 
-    # Property 2: heavy climbed at least one tier above its starting Shack.
-    assert heavy_score.tier != Tier.SHACK
-    # Property 3: a TierEvent was recorded for the climb.
-    events = TierEvent.objects.filter(user=user, artist=artists["heavy"])
+    # Cold pick climbs to Apartment (250 plays clears the 200 floor).
+    assert cld.tier == Tier.APARTMENT
+    assert cld.score == pytest.approx(250.0)
+
+    # Seeded House gets +10 plays but still in House (next floor is 200).
+    assert hse.tier == Tier.HOUSE
+    assert hse.score == pytest.approx(HOUSE_FLOOR + 10)
+
+    # Tier-event recorded for the cold pick's climb.
+    events = TierEvent.objects.filter(user=user, artist=artists["cold_pick"])
     assert events.count() == 1
-    event = events.first()
-    assert event.prev_tier == Tier.SHACK
-    assert event.new_tier == heavy_score.tier
-    assert event.delivered_at is None  # still pending animation
+    assert events.first().prev_tier == Tier.SHACK
+    assert events.first().new_tier == Tier.APARTMENT
 
 
-def test_dormant_artist_after_long_gap_eventually_downgrades(user, artists):
-    """An artist seeded at a high tier with no plays for a long time should
-    decay below the seed. Sanity-check on the cycle: a high seed with no
-    plays must not stay at landmark forever."""
-    far_future = DAY_0 + timedelta(days=400)
-    _seed_score(user, artists["dormant"], seed=120.0, tier=Tier.LANDMARK)
-    recompute_user(user, now=far_future)
-
-    score = ArtistScore.objects.get(user=user, artist=artists["dormant"])
-    # After more than one seed half-life with no plays, score should be
-    # under the original seed
-    assert score.score < 120.0
-    assert score.tier != Tier.LANDMARK
+def test_a_very_heavy_listener_can_reach_landmark(user, artists):
+    """Landmark is 4000 plays. A binger doing 50 plays/day for 80 days
+    gets there. Validates the threshold isn't unreachable."""
+    _seed(user, artists["cold_pick"], score=0.0, tier=Tier.SHACK)
+    _plays(user, artists["cold_pick"], n=4000)
+    recompute_user(user)
+    score = ArtistScore.objects.get(user=user, artist=artists["cold_pick"])
+    assert score.tier == Tier.LANDMARK

@@ -33,7 +33,12 @@ from ..models import (
     User,
 )
 from . import lastfm
-from .scoring import collect_positions, compute_seed_score, score_to_tier
+from .scoring import (
+    collect_positions,
+    rank_by_weight,
+    score_to_tier,
+    seed_tier_floor,
+)
 from .spotify import BaseSpotifyClient, get_client
 
 logger = logging.getLogger(__name__)
@@ -142,24 +147,31 @@ def run_initial_ingest(
             )
             artist_by_spotify_id[spotify_id] = artist
 
-    # Pass 2: compute per-artist seed score from rank positions.
+    # Pass 2: compute per-artist seed score from aggregate rank.
+    # Sort all artists by aggregate weight (across the three time-range
+    # lists), assign 1-indexed ranks, then map rank → tier-floor anchor.
     positions = collect_positions(top_lists)
+    ranks = rank_by_weight(positions)
     scores_created = 0
     scores_updated = 0
 
     seeded_at = timezone.now()
     with transaction.atomic():
-        for spotify_id, pos in positions.items():
+        for spotify_id in positions:
             artist = artist_by_spotify_id[spotify_id]
-            score = compute_seed_score(pos)
-            tier = score_to_tier(score)
-            _, created = ArtistScore.objects.update_or_create(
+            rank = ranks.get(spotify_id)  # None if not in any list (shouldn't happen here)
+            seed = seed_tier_floor(rank)
+            tier = score_to_tier(seed)
+            # Preserve existing seeds when an ArtistScore already exists —
+            # re-running initial-ingest must NOT reset a user's grown
+            # buildings back to Day-1 values.
+            _, created = ArtistScore.objects.get_or_create(
                 user=user,
                 artist=artist,
                 defaults={
-                    "score": score,
+                    "score": seed,
                     "tier": tier,
-                    "seed_score": score,
+                    "seed_score": seed,
                     "seed_assigned_at": seeded_at,
                 },
             )

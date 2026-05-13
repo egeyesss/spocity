@@ -1,30 +1,26 @@
-"""Per-user score recompute — the nightly heart of the scoring engine.
+"""Per-user score recompute under Hybrid C (see [[decisions]] §6).
 
-Pulls every ArtistScore row for a user, joins it with all their plays for
-that artist, runs the decay function, writes back the new score+tier, and
-emits a TierEvent row whenever the tier moves.
+Score is purely cumulative: `seed_score + count_of_PlayHistory_rows`. No
+time math. The nightly recompute walks every ArtistScore for a user,
+recounts plays from PlayHistory, recomputes the tier, emits TierEvents
+on tier changes, and records `last_played_at` for the Week 7 weathering
+visual.
 
-This is intentionally a plain Python function. The Celery task layer wraps
-it; tests call it directly with an injected `now` so the math is
-deterministic.
-
-Performance note: v1 is happy with O(scores + plays) per user. Once we have
-millions of plays per user this would want a windowed query (drop plays
-older than a few half-lives — they contribute < 0.01 to the score). Not now.
+Performance note: v1 is happy with O(scores) per user — we use one
+GROUP BY query to get per-artist counts + MAX(played_at) in a single DB
+round trip.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Iterable
 
 from django.db import transaction
-from django.utils import timezone
+from django.db.models import Count, Max
 
 from ..models import ArtistScore, PlayHistory, TierEvent, User
-from .decay import compute_decayed_score
+from .decay import compute_score
 from .scoring import score_to_tier
 
 logger = logging.getLogger(__name__)
@@ -36,61 +32,45 @@ class RecomputeResult:
     tier_events_created: int
 
 
-def _age_days(then: datetime, now: datetime) -> float:
-    """Days between `then` and `now`. Negative deltas are passed through —
-    the decay function clamps them."""
-    return (now - then).total_seconds() / 86400.0
-
-
-def recompute_user(user: User, now: datetime | None = None) -> RecomputeResult:
+def recompute_user(user: User) -> RecomputeResult:
     """Recompute every ArtistScore for a single user.
 
-    For each (user, artist) score:
-        1. Compute decayed score from seed + all plays.
-        2. Map to a tier.
-        3. If tier changed, emit a TierEvent.
-        4. Save the new score/tier.
+    For each (user, artist):
+        1. Count PlayHistory rows + grab MAX(played_at).
+        2. score = seed_score + count
+        3. tier = score_to_tier(score)
+        4. If tier changed, emit a TierEvent.
+        5. Save score, tier, last_played_at.
 
-    Uses one query for scores, one for plays (bucketed in Python by
-    artist_id), and one UPDATE per changed score. Wrapped in a
-    transaction so a mid-loop failure rolls back cleanly.
+    One GROUP BY query for play counts + max-played-at; one UPDATE per
+    score. Whole loop in a transaction.
     """
-    now = now or timezone.now()
-
-    scores: Iterable[ArtistScore] = ArtistScore.objects.filter(
-        user=user
-    ).select_related("artist")
-    scores_list = list(scores)
-    if not scores_list:
+    scores = list(
+        ArtistScore.objects.filter(user=user).select_related("artist")
+    )
+    if not scores:
         return RecomputeResult(0, 0)
 
-    artist_ids = [s.artist_id for s in scores_list]
-    plays_by_artist: dict[int, list[datetime]] = {aid: [] for aid in artist_ids}
-    for play in PlayHistory.objects.filter(
-        user=user, artist_id__in=artist_ids
-    ).only("artist_id", "played_at"):
-        plays_by_artist[play.artist_id].append(play.played_at)
+    artist_ids = [s.artist_id for s in scores]
+    play_agg = (
+        PlayHistory.objects.filter(user=user, artist_id__in=artist_ids)
+        .values("artist_id")
+        .annotate(n=Count("id"), last=Max("played_at"))
+    )
+    by_artist = {row["artist_id"]: row for row in play_agg}
 
     scores_updated = 0
     tier_events_created = 0
 
     with transaction.atomic():
-        for score in scores_list:
-            seed_age = (
-                _age_days(score.seed_assigned_at, now)
-                if score.seed_assigned_at
-                else 0.0
-            )
-            play_ages = [
-                _age_days(played_at, now)
-                for played_at in plays_by_artist[score.artist_id]
-            ]
+        for score in scores:
+            agg = by_artist.get(score.artist_id)
+            play_count = agg["n"] if agg else 0
+            last_played_at = agg["last"] if agg else None
 
-            new_score = compute_decayed_score(
+            new_score = compute_score(
                 seed_score=score.seed_score,
-                seed_age_days=seed_age,
-                play_ages_days=play_ages,
-                now=now,
+                play_count=play_count,
             )
             new_tier = score_to_tier(new_score)
 
@@ -105,14 +85,17 @@ def recompute_user(user: User, now: datetime | None = None) -> RecomputeResult:
 
             score.score = new_score
             score.tier = new_tier
-            score.save(update_fields=["score", "tier", "updated_at"])
+            score.last_played_at = last_played_at
+            score.save(
+                update_fields=[
+                    "score", "tier", "last_played_at", "updated_at"
+                ]
+            )
             scores_updated += 1
 
     logger.info(
         "recompute_user user=%s scores_updated=%d tier_events=%d",
-        user.pk,
-        scores_updated,
-        tier_events_created,
+        user.pk, scores_updated, tier_events_created,
     )
     return RecomputeResult(
         scores_updated=scores_updated,
