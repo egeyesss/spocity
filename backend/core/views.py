@@ -11,7 +11,13 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import SpotifyAccount, SpotifyTokenRefreshError, User
+from .models import (
+    ArtistScore,
+    GenreBucket,
+    SpotifyAccount,
+    SpotifyTokenRefreshError,
+    User,
+)
 from .services.ingest import run_initial_ingest, run_recent_ingest
 from .services.recompute import recompute_user
 from .services.spotify import SpotifyAPIError, get_client
@@ -207,6 +213,67 @@ def now_playing(request):
     }
     cache.set(cache_key, payload, settings.NOW_PLAYING_CACHE_TTL)
     return Response(payload)
+
+
+# ── City data ─────────────────────────────────────────────────────────────────
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def me_city(request):
+    """Return everything the frontend needs to render the requesting
+    user's city in one round trip.
+
+    Shape:
+        {
+          "artists": [
+            { spotify_id, name, image_url, tier, score, seed_score,
+              primary_genre_bucket, last_played_at }
+          ],
+          "buckets": [
+            { slug, label, color_palette, sort_order }
+          ]
+        }
+
+    Artists sorted by score descending so the frontend can lay buildings
+    out tightest at district centers without re-sorting (Week 5 layout).
+    """
+    scores = (
+        ArtistScore.objects
+        .filter(user=request.user)
+        .select_related("artist", "artist__primary_genre_bucket")
+        .order_by("-score", "artist__name")
+    )
+    artists_payload = [
+        {
+            "spotify_id": s.artist.spotify_id,
+            "name": s.artist.name,
+            "image_url": s.artist.image_url,
+            "tier": s.tier,
+            "score": s.score,
+            "seed_score": s.seed_score,
+            "primary_genre_bucket": (
+                s.artist.primary_genre_bucket.slug
+                if s.artist.primary_genre_bucket_id else None
+            ),
+            "last_played_at": (
+                s.last_played_at.isoformat() if s.last_played_at else None
+            ),
+        }
+        for s in scores
+    ]
+
+    buckets_payload = [
+        {
+            "slug": b.slug,
+            "label": b.label,
+            "color_palette": b.color_palette,
+            "sort_order": b.sort_order,
+        }
+        for b in GenreBucket.objects.all()
+    ]
+
+    return Response({"artists": artists_payload, "buckets": buckets_payload})
 
 
 # ── Admin / staff-only endpoints ──────────────────────────────────────────────
