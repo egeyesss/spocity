@@ -21,6 +21,7 @@ from datetime import datetime
 from typing import Any
 
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 from .. import genres as genre_rollup
 from ..models import (
@@ -146,6 +147,7 @@ def run_initial_ingest(
     scores_created = 0
     scores_updated = 0
 
+    seeded_at = timezone.now()
     with transaction.atomic():
         for spotify_id, pos in positions.items():
             artist = artist_by_spotify_id[spotify_id]
@@ -154,7 +156,12 @@ def run_initial_ingest(
             _, created = ArtistScore.objects.update_or_create(
                 user=user,
                 artist=artist,
-                defaults={"score": score, "tier": tier},
+                defaults={
+                    "score": score,
+                    "tier": tier,
+                    "seed_score": score,
+                    "seed_assigned_at": seeded_at,
+                },
             )
             if created:
                 scores_created += 1

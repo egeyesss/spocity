@@ -173,6 +173,12 @@ class ArtistScore(models.Model):
     tier = models.CharField(
         max_length=20, choices=Tier.choices, default=Tier.SHACK
     )
+    # seed_score is the rank-seed at the time it was assigned. It's frozen
+    # at initial ingest (and re-frozen if initial ingest re-runs) so the
+    # nightly recompute can decay it with the SEED_HALF_LIFE half-life
+    # independently of cumulative play contributions.
+    seed_score = models.FloatField(default=0.0)
+    seed_assigned_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
