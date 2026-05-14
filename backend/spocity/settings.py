@@ -1,6 +1,18 @@
 from pathlib import Path
 import environ
 
+# Docker's default bridge network has no IPv6 route. When DNS returns an
+# AAAA-only response (Spotify's `accounts.spotify.com` does this from some
+# DNS resolvers), `requests` tries the IPv6 address and dies with `[Errno 101]
+# Network is unreachable`. Forcing urllib3 to only accept IPv4 GAI results
+# fixes outbound HTTPS to any host whose A record still resolves — which is
+# all of them, since Spotify (like every major provider) dual-stacks.
+# Tradeoff: we lose IPv6-only destinations. None of our dependencies are that.
+import socket
+import urllib3.util.connection as _urllib3_cn
+
+_urllib3_cn.allowed_gai_family = lambda: socket.AF_INET  # type: ignore[assignment]
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = environ.Env(
