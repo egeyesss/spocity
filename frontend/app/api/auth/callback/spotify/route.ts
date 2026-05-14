@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { absoluteUrl } from "@/lib/request-url";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -6,12 +7,12 @@ export async function GET(request: NextRequest) {
   const error = searchParams.get("error");
 
   if (error || !code) {
-    return NextResponse.redirect(new URL("/?error=spotify_denied", request.url));
+    return NextResponse.redirect(absoluteUrl(request, "/?error=spotify_denied"));
   }
 
   const codeVerifier = request.cookies.get("spotify_code_verifier")?.value;
   if (!codeVerifier) {
-    return NextResponse.redirect(new URL("/?error=session_expired", request.url));
+    return NextResponse.redirect(absoluteUrl(request, "/?error=session_expired"));
   }
 
   try {
@@ -22,7 +23,8 @@ export async function GET(request: NextRequest) {
     });
 
     if (!djangoRes.ok) {
-      throw new Error(`Django ${djangoRes.status}`);
+      const detail = await djangoRes.text().catch(() => "");
+      throw new Error(`Django ${djangoRes.status}: ${detail.slice(0, 200)}`);
     }
 
     const data = await djangoRes.json() as { session_key: string };
@@ -46,7 +48,9 @@ export async function GET(request: NextRequest) {
       </head><body>Logging you in...</body></html>`,
       { status: 200, headers }
     );
-  } catch {
-    return NextResponse.redirect(new URL("/?error=auth_failed", request.url));
+  } catch (err) {
+    // Log to the dev server console so auth_failed isn't a black box.
+    console.error("[auth/callback] failed:", err);
+    return NextResponse.redirect(absoluteUrl(request, "/?error=auth_failed"));
   }
 }

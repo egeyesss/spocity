@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { absoluteUrl } from "@/lib/request-url";
 
 export async function POST(request: NextRequest) {
   const cookieStore = await cookies();
@@ -15,12 +16,7 @@ export async function POST(request: NextRequest) {
 
   // Expire the sessionid cookie on the browser regardless of whether
   // the Django call succeeded. This is the definitive logout signal.
-  // Build the redirect from the Host header so we stay on whatever host the
-  // browser used (127.0.0.1 vs localhost) — Next dev rewrites `request.url`
-  // to "localhost" otherwise, which would orphan the user's session cookies.
-  const host = request.headers.get("host") ?? "127.0.0.1:3000";
-  const proto = request.headers.get("x-forwarded-proto") ?? "http";
-  const response = NextResponse.redirect(`${proto}://${host}/`, { status: 303 });
+  const response = NextResponse.redirect(absoluteUrl(request, "/"), { status: 303 });
   response.cookies.set("sessionid", "", {
     httpOnly: true,
     sameSite: "lax",
