@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import CityCanvas from "./city/CityCanvas";
 import LogoutButton from "./LogoutButton";
 
 async function getUser() {
@@ -26,22 +27,19 @@ export default async function MePage() {
   if (!user) redirect("/");
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-        <span className="font-semibold tracking-tight">Spocity</span>
+    <div className="flex h-screen flex-col">
+      <header className="flex items-center justify-between border-b border-zinc-800 px-6 py-3">
+        <div className="flex items-baseline gap-3">
+          <span className="font-semibold tracking-tight">Spocity</span>
+          <span className="text-sm text-zinc-500">
+            Hello, {user.display_name}
+          </span>
+        </div>
         <LogoutButton />
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center">
-        <h1 className="text-4xl font-bold">Hello, {user.display_name}</h1>
-        <p className="text-zinc-500">
-          Your city is coming soon. Hang tight.
-        </p>
-
-        {/* Placeholder for the Week 4 <CityCanvas /> */}
-        <div className="mt-8 w-full max-w-2xl h-64 rounded-xl border border-zinc-800 flex items-center justify-center text-zinc-700 text-sm">
-          3D city renders here
-        </div>
+      <main className="relative flex-1 overflow-hidden">
+        <CityCanvas />
       </main>
     </div>
   );
