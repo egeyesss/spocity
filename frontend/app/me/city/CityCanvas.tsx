@@ -3,10 +3,11 @@
 import { Canvas } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
 import { fetchAPI, ApiError } from "@/lib/api";
+import { useNowPlaying } from "@/lib/useNowPlaying";
 import { CityScene } from "./CityScene";
 import { TIER_LABEL } from "./constants";
-import { gridLayout } from "./grid";
-import type { CityPayload, PlacedArtist } from "./types";
+import { districtLayout } from "./grid";
+import type { BucketRow, CityPayload, PlacedArtist } from "./types";
 
 type Status =
   | { kind: "loading" }
@@ -18,6 +19,9 @@ export default function CityCanvas() {
   const [status, setStatus] = useState<Status>({ kind: "loading" });
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const nowPlaying = useNowPlaying();
+  const nowPlayingId = nowPlaying?.artist_spotify_id ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -42,7 +46,10 @@ export default function CityCanvas() {
   }, []);
 
   const placed: PlacedArtist[] = useMemo(
-    () => (status.kind === "ready" ? gridLayout(status.data.artists) : []),
+    () =>
+      status.kind === "ready"
+        ? districtLayout(status.data.artists, status.data.buckets)
+        : [],
     [status]
   );
 
@@ -88,19 +95,18 @@ export default function CityCanvas() {
   return (
     <div className="relative h-full w-full">
       <Canvas
-        // "percentage" → PCFShadowMap. R3F's default "soft" maps to the
-        // PCFSoftShadowMap path that three r170+ deprecated.
         shadows="percentage"
-        camera={{ position: [25, 25, 25], fov: 45, near: 0.1, far: 500 }}
+        camera={{ position: [50, 45, 70], fov: 45, near: 0.1, far: 600 }}
         gl={{ antialias: true }}
       >
         <color attach="background" args={["#0a0a0a"]} />
-        <fog attach="fog" args={["#0a0a0a", 60, 200]} />
+        <fog attach="fog" args={["#0a0a0a", 100, 300]} />
         <CityScene
           artists={placed}
           buckets={status.data.buckets}
           hoveredId={hoveredId}
           selectedId={selectedId}
+          nowPlayingId={nowPlayingId}
           onHover={setHoveredId}
           onSelect={setSelectedId}
         />
@@ -116,13 +122,26 @@ export default function CityCanvas() {
           onClose={() => setSelectedId(null)}
         />
       )}
+
+      {nowPlaying && <NowPlayingCard nowPlaying={nowPlaying} />}
+
+      <MiniMap
+        buckets={status.data.buckets}
+        artists={placed}
+        nowPlayingBucket={
+          nowPlayingId
+            ? (placed.find((a) => a.spotify_id === nowPlayingId)
+                ?.primary_genre_bucket ?? null)
+            : null
+        }
+      />
     </div>
   );
 }
 
+// ── HoverTooltip ──────────────────────────────────────────────────────────────
+
 function HoverTooltip({ artist }: { artist: PlacedArtist }) {
-  // Anchored to the cursor via CSS — uses pointer-events:none so it never
-  // intercepts the click that selects the building.
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -146,6 +165,8 @@ function HoverTooltip({ artist }: { artist: PlacedArtist }) {
   );
 }
 
+// ── DetailPanel ───────────────────────────────────────────────────────────────
+
 function DetailPanel({
   artist,
   onClose,
@@ -165,8 +186,6 @@ function DetailPanel({
       </button>
 
       {artist.image_url ? (
-        // Spotify image URLs come signed and don't go through Next's Image
-        // optimizer — plain <img> is fine here.
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={artist.image_url}
@@ -200,5 +219,133 @@ function DetailPanel({
         </dd>
       </dl>
     </aside>
+  );
+}
+
+// ── NowPlayingCard ────────────────────────────────────────────────────────────
+
+function NowPlayingCard({
+  nowPlaying,
+}: {
+  nowPlaying: NonNullable<ReturnType<typeof useNowPlaying>>;
+}) {
+  return (
+    <div className="absolute bottom-4 left-4 z-20 flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950/90 px-3 py-2 shadow-2xl backdrop-blur max-w-xs">
+      {nowPlaying.album_image ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={nowPlaying.album_image}
+          alt="Album art"
+          className="h-10 w-10 rounded-md object-cover flex-shrink-0"
+        />
+      ) : (
+        <div className="h-10 w-10 rounded-md bg-zinc-800 flex-shrink-0" />
+      )}
+      <div className="min-w-0">
+        <p className="text-xs text-zinc-500 mb-0.5 flex items-center gap-1">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+          Now Playing
+        </p>
+        <p className="text-sm font-medium text-zinc-100 truncate">
+          {nowPlaying.track_name}
+        </p>
+        <p className="text-xs text-zinc-400 truncate">
+          {nowPlaying.artist_name}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── MiniMap ───────────────────────────────────────────────────────────────────
+
+// Short label for each bucket in the 36px-wide mini-map cells.
+function shortLabel(label: string): string {
+  return label.split(/[\s/]/)[0].slice(0, 6);
+}
+
+function MiniMap({
+  buckets,
+  artists,
+  nowPlayingBucket,
+}: {
+  buckets: BucketRow[];
+  artists: PlacedArtist[];
+  nowPlayingBucket: string | null;
+}) {
+  const sorted = useMemo(
+    () => [...buckets].sort((a, b) => a.sort_order - b.sort_order),
+    [buckets]
+  );
+
+  const occupied = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of artists) if (a.primary_genre_bucket) s.add(a.primary_genre_bucket);
+    return s;
+  }, [artists]);
+
+  const COLS = 4;
+  const cellW = 38;
+  const cellH = 28;
+  const gap = 3;
+  const pad = 6;
+  const nRows = Math.ceil(sorted.length / COLS);
+  const svgW = COLS * cellW + (COLS - 1) * gap + 2 * pad;
+  const svgH = nRows * cellH + (nRows - 1) * gap + 2 * pad;
+
+  return (
+    <div className="absolute bottom-4 right-4 z-20 rounded-xl border border-zinc-800 bg-zinc-950/90 p-2 shadow-xl backdrop-blur select-none">
+      <p className="text-[10px] text-zinc-500 mb-1 px-1 tracking-wide uppercase">
+        Districts
+      </p>
+      <svg width={svgW} height={svgH} aria-label="City district mini-map">
+        {sorted.map((bucket, i) => {
+          const col = i % COLS;
+          const row = Math.floor(i / COLS);
+          const x = pad + col * (cellW + gap);
+          const y = pad + row * (cellH + gap);
+          const isOccupied = occupied.has(bucket.slug);
+          const isNowPlaying = bucket.slug === nowPlayingBucket;
+          const fill = isOccupied ? bucket.color_palette[1] : "#27272a";
+          const textFill = isOccupied ? "#0a0a0a" : "#71717a";
+          return (
+            <g key={bucket.slug}>
+              <rect
+                x={x}
+                y={y}
+                width={cellW}
+                height={cellH}
+                rx={4}
+                fill={fill}
+                opacity={isOccupied ? 1 : 0.5}
+              />
+              {isNowPlaying && (
+                <rect
+                  x={x - 1}
+                  y={y - 1}
+                  width={cellW + 2}
+                  height={cellH + 2}
+                  rx={5}
+                  fill="none"
+                  stroke="#4ade80"
+                  strokeWidth={2}
+                />
+              )}
+              <text
+                x={x + cellW / 2}
+                y={y + cellH / 2 + 4}
+                textAnchor="middle"
+                fill={textFill}
+                fontSize={8}
+                fontFamily="system-ui, sans-serif"
+                fontWeight={500}
+              >
+                {shortLabel(bucket.label)}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
   );
 }
