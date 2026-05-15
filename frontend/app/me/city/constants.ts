@@ -29,7 +29,11 @@ export const FALLBACK_PALETTE: [string, string, string] = [
   "#27272A",
 ];
 
-// One world-unit per voxel; buildings sit on a grid with this much spacing
-// between footprints. Week 5 replaces the grid with district-based layout.
 export const VOXEL_SIZE = 1;
-export const GRID_SPACING = 2.2;
+
+// District layout (Week 5): each genre bucket occupies one cell in a 4-col grid.
+export const DISTRICT_COLS = 4;
+export const DISTRICT_CELL = 30; // world-unit width/depth per district cell
+// Phyllotaxis spiral radius for rank-n artist within its district.
+// r = SPIRAL_BASE * sqrt(rank), so buildings pack tight at center and spread outward.
+export const SPIRAL_BASE = 2.8;
