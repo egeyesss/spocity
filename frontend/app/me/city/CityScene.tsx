@@ -1,6 +1,6 @@
 "use client";
 
-import { Line, OrbitControls, Stars, Text } from "@react-three/drei";
+import { Line, OrbitControls, Stars } from "@react-three/drei";
 import type { ThreeEvent } from "@react-three/fiber";
 import { useMemo } from "react";
 import { FALLBACK_PALETTE } from "./constants";
@@ -16,16 +16,6 @@ const CREAM = "#E9E1CE"; // base ground + block tiles
 const PAVEMENT = "#6E6E73"; // classic road gray
 const ROAD_LINE = "#F2C200"; // road-marking yellow
 const GRASS = "#4F9E55"; // park tile
-
-// Linear blend of two #rrggbb colors. t=0 → a, t=1 → b.
-function mixHex(a: string, b: string, t: number): string {
-  const pa = parseInt(a.slice(1), 16);
-  const pb = parseInt(b.slice(1), 16);
-  const r = Math.round(((pa >> 16) & 255) + (((pb >> 16) & 255) - ((pa >> 16) & 255)) * t);
-  const g = Math.round(((pa >> 8) & 255) + (((pb >> 8) & 255) - ((pa >> 8) & 255)) * t);
-  const bl = Math.round((pa & 255) + ((pb & 255) - (pa & 255)) * t);
-  return "#" + ((1 << 24) | (r << 16) | (g << 8) | bl).toString(16).slice(1);
-}
 
 function mulberry32(seed: number) {
   let a = seed >>> 0;
@@ -206,26 +196,6 @@ export function CityScene({
         />
       ))}
 
-      {/* Per-district block tiles — cream with a faint district tint */}
-      {blocks.map((b) => (
-        <mesh
-          key={`tile-${b.slug}`}
-          rotation={[-Math.PI / 2, 0, 0]}
-          position={[b.cx, 0.05, b.cz]}
-          receiveShadow
-        >
-          <planeGeometry args={[b.x1 - b.x0, b.z1 - b.z0]} />
-          <meshStandardMaterial
-            color={mixHex(CREAM, b.palette[0], 0.3)}
-            roughness={1}
-            metalness={0}
-            polygonOffset
-            polygonOffsetFactor={-2}
-            polygonOffsetUnits={-2}
-          />
-        </mesh>
-      ))}
-
       {/* Parks fill any empty grid slots */}
       {parks.map((p, i) => (
         <Park key={`park-${i}`} park={p} seed={i + 1} />
@@ -233,23 +203,6 @@ export function CityScene({
 
       {/* Roundabouts + traffic lights */}
       <StreetFurniture intersections={intersections} />
-
-      {/* District name labels — laid flat on the street in front of each block */}
-      {blocks.map((b) => (
-        <Text
-          key={`label-${b.slug}`}
-          position={[b.cx, 0.12, b.z1 + 3]}
-          rotation={[-Math.PI / 2, 0, 0]}
-          fontSize={2.6}
-          color={b.palette[2]}
-          anchorX="center"
-          anchorY="middle"
-          outlineWidth={0.12}
-          outlineColor="#FAFAF5"
-        >
-          {b.label.toUpperCase()}
-        </Text>
-      ))}
 
       {/* Ambient traffic */}
       <Cars roads={roads} />
