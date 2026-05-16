@@ -31,9 +31,12 @@ export const FALLBACK_PALETTE: [string, string, string] = [
 
 export const VOXEL_SIZE = 1;
 
-// District layout (Week 5): each genre bucket occupies one cell in a 4-col grid.
+// City layout (Barcelona Eixample block grid). Districts are arranged as
+// rectangular blocks in a DISTRICT_COLS-wide grid; the gaps between blocks are
+// the asphalt roads.
 export const DISTRICT_COLS = 4;
-export const DISTRICT_CELL = 30; // world-unit width/depth per district cell
-// Phyllotaxis spiral radius for rank-n artist within its district.
-// r = SPIRAL_BASE * sqrt(rank), so buildings pack tight at center and spread outward.
-export const SPIRAL_BASE = 2.8;
+// Center-to-center spacing between adjacent buildings inside a block. Must be
+// wide enough to clear the largest footprint (skyscraper podiums span 4 voxels).
+export const BUILDING_PITCH = 6;
+// Width of the asphalt road between two district blocks, in world units.
+export const ROAD_WIDTH = 11;

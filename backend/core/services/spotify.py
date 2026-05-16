@@ -76,11 +76,28 @@ class SpotifyClient(BaseSpotifyClient):
     ) -> list[dict[str, Any]]:
         if time_range not in {"short_term", "medium_term", "long_term"}:
             raise ValueError(f"invalid time_range: {time_range}")
-        data = self._get(
-            "/me/top/artists",
-            params={"time_range": time_range, "limit": limit},
-        )
-        return data.get("items", [])
+
+        # Spotify caps `limit` at 50 per request. For limit > 50 we page with
+        # `offset` (max 10000) and stop early once a short page or a null
+        # `next` tells us there's no more data for this time range.
+        items: list[dict[str, Any]] = []
+        offset = 0
+        while len(items) < limit:
+            want = min(50, limit - len(items))
+            data = self._get(
+                "/me/top/artists",
+                params={
+                    "time_range": time_range,
+                    "limit": want,
+                    "offset": offset,
+                },
+            )
+            batch = data.get("items", [])
+            items.extend(batch)
+            if len(batch) < want or not data.get("next"):
+                break
+            offset += len(batch)
+        return items[:limit]
 
     def get_recently_played(self, limit: int = 50) -> list[dict[str, Any]]:
         data = self._get(

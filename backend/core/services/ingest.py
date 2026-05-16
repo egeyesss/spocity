@@ -45,6 +45,10 @@ logger = logging.getLogger(__name__)
 
 TIME_RANGES = ("short_term", "medium_term", "long_term")
 
+# How many top artists to pull per time range. Spotify pages this internally
+# (50/request); the union across the three ranges is what fills the city.
+TOP_ARTISTS_LIMIT = 100
+
 
 @dataclass
 class InitialIngestResult:
@@ -128,7 +132,9 @@ def run_initial_ingest(
 
     top_lists: dict[str, list[dict]] = {}
     for tr in TIME_RANGES:
-        top_lists[tr] = client.get_top_artists(time_range=tr, limit=50)
+        top_lists[tr] = client.get_top_artists(
+            time_range=tr, limit=TOP_ARTISTS_LIMIT
+        )
 
     bucket_lookup = _bucket_lookup()
     unmapped_tags: list[str] = []
