@@ -2,12 +2,18 @@
 
 import { Line, OrbitControls, Stars } from "@react-three/drei";
 import type { ThreeEvent } from "@react-three/fiber";
-import { useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
+import type { Vector3 } from "three";
 import { FALLBACK_PALETTE } from "./constants";
+import { CameraRig, makeFocusState, type FocusState } from "./CameraRig";
+import { Billboards } from "./Billboards";
 import { Cars } from "./Cars";
+import { Outskirts } from "./Outskirts";
+import { Skybox, SKY_HORIZON, SKY_TOP } from "./Skybox";
 import { StreetFurniture } from "./StreetFurniture";
 import { cityRoads } from "./grid";
 import type { DistrictBlock, ParkCell } from "./grid";
+import type { NowPlayingData } from "@/lib/useNowPlaying";
 import type { BucketRow, PlacedArtist } from "./types";
 import { VoxelBuilding } from "./VoxelBuilding";
 
@@ -84,6 +90,7 @@ interface CitySceneProps {
   hoveredId: string | null;
   selectedId: string | null;
   nowPlayingId: string | null;
+  nowPlaying: NowPlayingData | null;
   onHover: (id: string | null) => void;
   onSelect: (id: string | null) => void;
 }
@@ -96,6 +103,7 @@ export function CityScene({
   hoveredId,
   selectedId,
   nowPlayingId,
+  nowPlaying,
   onHover,
   onSelect,
 }: CitySceneProps) {
@@ -108,18 +116,56 @@ export function CityScene({
     };
   }, [buckets]);
 
-  const groundSize = useMemo(() => {
-    const extent = artists.reduce((max, a) => {
+  const { roads, intersections, bounds } = useMemo(
+    () => cityRoads(blocks),
+    [blocks],
+  );
+
+  // City scale → fog band + ground size. Fog is tinted to the sky's horizon
+  // colour and reaches full opacity before the ground edge, so the finite
+  // plane dissolves into the dusk sky instead of ending in a hard seam.
+  const { groundSize, fogNear, fogFar } = useMemo(() => {
+    const artistExtent = artists.reduce((max, a) => {
       const r = Math.max(Math.abs(a.position[0]), Math.abs(a.position[2]));
       return r > max ? r : max;
     }, 0);
-    return Math.max(200, (extent + 40) * 2);
-  }, [artists]);
+    const cityHalf = bounds
+      ? Math.max(
+          (bounds.x1 - bounds.x0) / 2,
+          (bounds.z1 - bounds.z0) / 2,
+          artistExtent,
+        )
+      : Math.max(80, artistExtent);
+    const near = cityHalf + 25;
+    const far = Math.min(560, cityHalf * 3.4 + 60);
+    return {
+      groundSize: Math.max(200, far * 2 + 100),
+      fogNear: near,
+      fogFar: far,
+    };
+  }, [artists, bounds]);
 
-  const { roads, intersections } = useMemo(() => cityRoads(blocks), [blocks]);
+  // Click-to-focus a billboard: record the destination; CameraRig flies there.
+  const focusRef = useRef<FocusState>(makeFocusState());
+  const focusOn = useCallback(
+    (id: number, target: Vector3, camPos: Vector3) => {
+      const f = focusRef.current;
+      f.reqId = id;
+      f.reqTarget.copy(target);
+      f.reqPos.copy(camPos);
+      f.requested = true;
+    },
+    [],
+  );
 
   return (
     <>
+      {/* Dusk sky: gradient dome + horizon-tinted fog. Background colour is a
+          fallback equal to the dome's top tone. */}
+      <color attach="background" args={[SKY_TOP]} />
+      <fog attach="fog" args={[SKY_HORIZON, fogNear, fogFar]} />
+      <Skybox />
+
       {/* Neutral fill so the ground/props read true (buildings are unlit and
           carry their own baked shading, so lights only touch ground, pads,
           trees, cars and antenna tips). No purple tint — it muddied the
@@ -146,6 +192,20 @@ export function CityScene({
         <planeGeometry args={[groundSize, groundSize]} />
         <meshStandardMaterial color={CREAM} roughness={1} metalness={0} />
       </mesh>
+
+      {/* "Rest of the city" filler around the real districts */}
+      {bounds && <Outskirts bounds={bounds} horizon={SKY_HORIZON} />}
+
+      {/* Animated ad boards (now-playing / top artists / districts / stats) */}
+      <Billboards
+        artists={artists}
+        blocks={blocks}
+        parks={parks}
+        buckets={buckets}
+        bounds={bounds}
+        nowPlaying={nowPlaying}
+        onFocus={focusOn}
+      />
 
       {/* Gray pavement — one strip per street. Vertical and horizontal roads
           get distinct y + polygonOffset so they don't z-fight where they
@@ -238,6 +298,7 @@ export function CityScene({
       ))}
 
       <OrbitControls
+        makeDefault
         enablePan
         enableZoom
         enableRotate
@@ -246,6 +307,7 @@ export function CityScene({
         maxPolarAngle={Math.PI / 2 - 0.05}
         target={[0, 2, 0]}
       />
+      <CameraRig focusRef={focusRef} />
     </>
   );
 }
