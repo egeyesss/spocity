@@ -1,12 +1,17 @@
 "use client";
 
 import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import * as THREE from "three";
 import type { MeshStandardMaterial } from "three";
 import type { ThreeEvent } from "@react-three/fiber";
 import { VOXEL_SIZE, TIER_HEIGHT } from "./constants";
-import { lookupBuildingDef, type SpriteDef } from "./buildingDefs";
+import { lookupBuildingDef, type SpriteDef, type VoxelDef } from "./buildingDefs";
+import { buildVoxelMesh } from "./voxelMesh";
+import "./voxelMaterial"; // registers <voxelMaterial> via extend()
 import type { Tier } from "./types";
+
+type VoxelMat = THREE.ShaderMaterial & { uEmissiveIntensity: number };
 
 interface VoxelBuildingProps {
   district: string | null;
@@ -20,6 +25,32 @@ interface VoxelBuildingProps {
   onPointerOut?: (e: ThreeEvent<PointerEvent>) => void;
   onClick?: (e: ThreeEvent<MouseEvent>) => void;
 }
+
+// Soft radial blob — the contact shadow under every building. The reference
+// designs ground each building with a soft shadow + a faint lot tile rather
+// than a hard projected shadow, so we fake it with one shared texture.
+let _shadowTex: THREE.CanvasTexture | null = null;
+function shadowTexture(): THREE.CanvasTexture | null {
+  if (_shadowTex) return _shadowTex;
+  if (typeof document === "undefined") return null;
+  const s = 128;
+  const cvs = document.createElement("canvas");
+  cvs.width = cvs.height = s;
+  const ctx = cvs.getContext("2d")!;
+  const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+  g.addColorStop(0, "rgba(0,0,0,0.50)");
+  g.addColorStop(0.55, "rgba(0,0,0,0.28)");
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, s, s);
+  _shadowTex = new THREE.CanvasTexture(cvs);
+  _shadowTex.colorSpace = THREE.SRGBColorSpace;
+  return _shadowTex;
+}
+
+// Faint neutral lot tile (slightly darker than the cream ground) so each
+// building reads as sitting on its own plot, like the reference renders.
+const PAD_COLOR = "#D8CFB8";
 
 export function VoxelBuilding({
   district,
@@ -35,33 +66,29 @@ export function VoxelBuilding({
 }: VoxelBuildingProps) {
   const buildingDef = useMemo(() => lookupBuildingDef(district, tier), [district, tier]);
 
-  // Voxel list + footprint center for coordinate translation
-  const { voxels, cx, cy } = useMemo(() => {
-    if (buildingDef) {
-      const dv = buildingDef.voxels;
-      const xs = dv.map((v) => v.x);
-      const ys = dv.map((v) => v.y);
-      const minX = Math.min(...xs);
-      const maxX = Math.max(...xs);
-      const minY = Math.min(...ys);
-      const maxY = Math.max(...ys);
-      return { voxels: dv, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
-    }
-    // Fallback: height-band gradient column
+  // Voxel list: from the design library, or a fallback gradient column for
+  // districts/tiers without a hand-authored building.
+  const voxels = useMemo<VoxelDef[]>(() => {
+    if (buildingDef) return buildingDef.voxels;
     const h = TIER_HEIGHT[tier] ?? 1;
     const third = Math.max(1, Math.ceil(h / 3));
-    return {
-      voxels: Array.from({ length: h }, (_, i) => {
-        const band = Math.min(2, Math.floor(i / third));
-        const colorIdx = (2 - band) as 0 | 1 | 2;
-        return { x: 0, y: 0, z: i, color: palette[colorIdx] };
-      }),
-      cx: 0,
-      cy: 0,
-    };
+    return Array.from({ length: h }, (_, i) => {
+      const band = Math.min(2, Math.floor(i / third));
+      const colorIdx = (2 - band) as 0 | 1 | 2;
+      return { x: 0, y: 0, z: i, color: palette[colorIdx] };
+    });
   }, [buildingDef, tier, palette]);
 
-  // Only antenna sprites are rendered in R3F (others are 2D-only design elements)
+  // One merged, face-culled, flat-shaded geometry per building.
+  const { geometry, footprint, cx, cy } = useMemo(
+    () => buildVoxelMesh(voxels),
+    [voxels],
+  );
+  useEffect(() => () => geometry.dispose(), [geometry]);
+
+  const materialRef = useRef<VoxelMat | null>(null);
+
+  // Only antenna sprites are rendered in R3F (others are 2D-only design notes).
   const antennas = useMemo(
     () =>
       (buildingDef?.sprites ?? []).filter(
@@ -70,27 +97,33 @@ export function VoxelBuilding({
     [buildingDef],
   );
 
-  const matRefs = useRef<(MeshStandardMaterial | null)[]>([]);
   const antennaTipRefs = useRef<(MeshStandardMaterial | null)[]>([]);
 
   useFrame(({ clock }) => {
     const t = clock.elapsedTime;
-    const bodyIntensity = nowPlaying
-      ? 0.3 + 0.25 * Math.sin(t * 3)
-      : selected
-        ? 0.45
-        : hovered
-          ? 0.15
-          : 0;
-    for (const mat of matRefs.current) {
-      if (mat) mat.emissiveIntensity = bodyIntensity;
+    // Body glow: a soft breathing pulse when now-playing, a steady lift when
+    // selected, a faint hint on hover, nothing otherwise.
+    const mat = materialRef.current;
+    if (mat) {
+      mat.uEmissiveIntensity = nowPlaying
+        ? 0.22 + 0.16 * Math.sin(t * 3)
+        : selected
+          ? 0.3
+          : hovered
+            ? 0.12
+            : 0;
     }
-    // Antenna tips always glow — brighter pulse when now-playing
+
+    // Antenna tips always glow — brighter pulse when now-playing.
     const tipIntensity = nowPlaying ? 2.0 + 0.8 * Math.sin(t * 3) : 1.2;
     for (const mat of antennaTipRefs.current) {
       if (mat) mat.emissiveIntensity = tipIntensity;
     }
   });
+
+  const sTex = shadowTexture();
+  const padW = footprint.spanX + 0.7;
+  const padD = footprint.spanZ + 0.7;
 
   return (
     <group
@@ -99,31 +132,33 @@ export function VoxelBuilding({
       onPointerOut={onPointerOut}
       onClick={onClick}
     >
-      {/* Per-voxel body meshes */}
-      {voxels.map((v, i) => (
-        <mesh
-          key={i}
-          position={[
-            (v.x - cx) * VOXEL_SIZE,
-            v.z * VOXEL_SIZE + VOXEL_SIZE / 2,
-            (v.y - cy) * VOXEL_SIZE,
-          ]}
-          castShadow
-          receiveShadow
-        >
-          <boxGeometry args={[VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE]} />
-          <meshStandardMaterial
-            ref={(mat) => {
-              matRefs.current[i] = mat;
-            }}
-            color={v.color}
-            emissive={v.color}
-            emissiveIntensity={0}
-            roughness={0.75}
-            metalness={0.05}
+      {/* Faint lot tile */}
+      <mesh position={[0, 0.05, 0]} receiveShadow>
+        <boxGeometry args={[padW, 0.1, padD]} />
+        <meshStandardMaterial color={PAD_COLOR} roughness={1} metalness={0} />
+      </mesh>
+
+      {/* Soft contact shadow, just above the pad */}
+      {sTex && (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.12, 0]}>
+          <planeGeometry args={[padW * 1.5, padD * 1.5]} />
+          <meshBasicMaterial
+            map={sTex}
+            transparent
+            depthWrite={false}
+            opacity={0.7}
           />
         </mesh>
-      ))}
+      )}
+
+      {/* The building itself: one flat-shaded merged mesh */}
+      <mesh geometry={geometry}>
+        <voxelMaterial
+          ref={materialRef}
+          attach="material"
+          side={THREE.DoubleSide}
+        />
+      </mesh>
 
       {/* Antenna sprites: thin pole + glowing emissive tip + point light */}
       {antennas.map((s, ai) => {
@@ -152,7 +187,7 @@ export function VoxelBuilding({
                 roughness={0.1}
               />
             </mesh>
-            {/* colored point light for the "city at night" glow on nearby surfaces */}
+            {/* colored point light for the "city at dusk" glow on nearby surfaces */}
             <pointLight
               position={[ax, baseY + poleH, az]}
               color={tipColor}
