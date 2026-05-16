@@ -120,16 +120,19 @@ export function CityScene({
 
   return (
     <>
-      {/* Daylight-ish so the cream actually reads as cream, dusk sky kept */}
-      <hemisphereLight args={["#bfa6c8", "#E9E1CE", 0.85]} />
+      {/* Neutral fill so the ground/props read true (buildings are unlit and
+          carry their own baked shading, so lights only touch ground, pads,
+          trees, cars and antenna tips). No purple tint — it muddied the
+          design palette. */}
+      <hemisphereLight args={["#d8dde6", "#cbbd9e", 0.5]} />
       <directionalLight
-        position={[40, 70, 25]}
-        intensity={1.0}
+        position={[40, 80, 30]}
+        intensity={0.9}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
       />
-      <ambientLight intensity={0.35} />
+      <ambientLight intensity={0.3} />
 
       <Stars radius={300} depth={60} count={500} factor={1.5} saturation={0} fade speed={0} />
 

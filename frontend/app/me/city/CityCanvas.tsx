@@ -99,8 +99,8 @@ export default function CityCanvas() {
         camera={{ position: [90, 95, 130], fov: 26, near: 1, far: 600 }}
         gl={{ antialias: true }}
       >
-        <color attach="background" args={["#1a1530"]} />
-        <fog attach="fog" args={["#1a1530", 200, 560]} />
+        <color attach="background" args={["#141220"]} />
+        <fog attach="fog" args={["#141220", 200, 560]} />
         <CityScene
           artists={placed}
           blocks={blocks}
