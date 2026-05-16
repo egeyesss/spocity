@@ -20,7 +20,8 @@ import { VOXEL_SIZE as S } from "./constants";
 
 // Per-face brightness multipliers (applied in linear space). Matches the
 // 3-tone read of the reference art: lit top, mid "front", dark "side".
-const FACE_SHADE = {
+// Exported so the outskirts filler can shade identically.
+export const FACE_SHADE = {
   top: 1.0,
   bottom: 0.32,
   front: 0.82, // ±Z (world depth) — the lighter pair
