@@ -40,7 +40,7 @@ export interface BuildingDef {
   sprites: SpriteDef[];
 }
 
-export type BuildingVariant = "house" | "apartment" | "skyscraper";
+export type BuildingVariant = "shack" | "house" | "apartment" | "skyscraper";
 
 type DistrictLibrary = Record<BuildingVariant, BuildingDef>;
 
@@ -91,9 +91,58 @@ export function shade(hex: string, amt: number): string {
   return "#" + hx(adj(r)) + hx(adj(g)) + hx(adj(b));
 }
 
+// ── Shack ─────────────────────────────────────────────────────────────────────
+//
+// The smallest tier. A 2×2 single-floor hut: walls + door + 1–2 lit windows +
+// a colored roof cap, in the district's own vocabulary. Deliberately ~2 voxels
+// tall (3 with an optional chimney) so it stays clearly the smallest building
+// next to the 3–5-tall houses — but it now reads as a tiny building with
+// character instead of a bare cube. A short antenna on the tech districts
+// (the only sprite type that renders in 3D) adds a bit of life.
+
+function shackDef(opts: {
+  wall: string;
+  roof: string;
+  door: string;
+  window: string;
+  /** small chimney voxel on the roof — silhouette interest, still tiny */
+  chimney?: string;
+  /** add a second window on the side face */
+  twoWindows?: boolean;
+  /** glowing antenna tip color (electronic / metal) */
+  antennaTip?: string;
+}): BuildingDef {
+  return {
+    voxels: dedup(
+      (() => {
+        let vs = box(0, 1, 0, 1, 0, 0, opts.wall); // 2×2 single floor
+        // front door + window(s)
+        vs = paint(vs, (v) => v.x === 0 && v.y === 0 && v.z === 0, opts.door);
+        vs = paint(vs, (v) => v.x === 1 && v.y === 0 && v.z === 0, opts.window);
+        if (opts.twoWindows)
+          vs = paint(vs, (v) => v.x === 1 && v.y === 1 && v.z === 0, opts.window);
+        vs = vs.concat(box(0, 1, 0, 1, 1, 1, opts.roof)); // roof cap
+        if (opts.chimney) vs = vs.concat([sv(1, 1, 2, opts.chimney)]);
+        return vs;
+      })(),
+    ),
+    sprites: opts.antennaTip
+      ? [{ type: "antenna", x: 0, y: 0, z: 2, h: 3, color: "#0a0812", tipColor: opts.antennaTip }]
+      : [],
+  };
+}
+
 // ── Electronic — cyan glasshouse towers ───────────────────────────────────────
 
 const electronic: DistrictLibrary = {
+  shack: shackDef({
+    wall: "#155E75",
+    roof: "#06B6D4",
+    door: "#0E7490",
+    window: "#FBBF24",
+    twoWindows: true,
+    antennaTip: "#EC4899",
+  }),
   house: {
     voxels: dedup((() => {
       let vs = box(0, 1, 0, 1, 0, 1, "#155E75");
@@ -142,6 +191,13 @@ const electronic: DistrictLibrary = {
 // ── Pop — pastel pink peaked roofs ────────────────────────────────────────────
 
 const pop: DistrictLibrary = {
+  shack: shackDef({
+    wall: "#FFC1D9",
+    roof: "#FFE599",
+    door: "#DC2626",
+    window: "#FAFAF5",
+    twoWindows: true,
+  }),
   house: {
     voxels: dedup((() => {
       let vs = box(0, 2, 0, 1, 0, 1, "#FFC1D9");
@@ -207,6 +263,13 @@ const pop: DistrictLibrary = {
 // ── Hip-Hop — brick brownstones, gold trim ────────────────────────────────────
 
 const hiphop: DistrictLibrary = {
+  shack: shackDef({
+    wall: "#A0522D",
+    roof: "#FFC107",
+    door: "#1a1a1a",
+    window: "#FFE599",
+    chimney: "#5a2d11",
+  }),
   house: {
     voxels: dedup((() => {
       let vs = box(0, 2, 0, 1, 0, 2, "#A0522D");
@@ -255,6 +318,12 @@ const hiphop: DistrictLibrary = {
 // ── Rock — dark red brick, black accents ──────────────────────────────────────
 
 const rock: DistrictLibrary = {
+  shack: shackDef({
+    wall: "#7c1a1a",
+    roof: "#1a0a0a",
+    door: "#1a0a0a",
+    window: "#EF4444",
+  }),
   house: {
     voxels: dedup((() => {
       let vs = box(0, 2, 0, 2, 0, 1, "#7c1a1a");
@@ -303,6 +372,13 @@ const rock: DistrictLibrary = {
 // ── Folk — wood tones, green pitched roofs, chimney smoke ─────────────────────
 
 const folk: DistrictLibrary = {
+  shack: shackDef({
+    wall: "#8B6F47",
+    roof: "#15803D",
+    door: "#5a4225",
+    window: "#FFE599",
+    chimney: "#6b5532",
+  }),
   house: {
     voxels: dedup((() => {
       let vs = box(0, 2, 0, 1, 0, 1, "#8B6F47");
@@ -352,6 +428,12 @@ const folk: DistrictLibrary = {
 // ── Jazz — deep indigo, gold art-deco pinstripes ──────────────────────────────
 
 const jazz: DistrictLibrary = {
+  shack: shackDef({
+    wall: "#3730A3",
+    roof: "#B8860B",
+    door: "#B8860B",
+    window: "#FFC107",
+  }),
   house: {
     voxels: dedup((() => {
       let vs = box(0, 2, 0, 1, 0, 1, "#3730A3");
@@ -417,6 +499,13 @@ const jazz: DistrictLibrary = {
 // ── R&B / Soul — plum & lavender, warm gold accents, soft setbacks ────────────
 
 const rnb: DistrictLibrary = {
+  shack: shackDef({
+    wall: "#7C5DB8",
+    roof: "#9F7AEA",
+    door: "#B8860B",
+    window: "#D6BCFA",
+    twoWindows: true,
+  }),
   house: {
     voxels: dedup((() => {
       let vs = box(0, 2, 0, 1, 0, 2, "#7C5DB8");
@@ -472,6 +561,13 @@ const rnb: DistrictLibrary = {
 // ── Metal — near-black mass, steel-gray accents, angular spires ────────────────
 
 const metal: DistrictLibrary = {
+  shack: shackDef({
+    wall: "#2D3748",
+    roof: "#0F1419",
+    door: "#0F1419",
+    window: "#4A5568",
+    antennaTip: "#A0AEC0",
+  }),
   house: {
     voxels: dedup((() => {
       let vs = box(0, 2, 0, 1, 0, 2, "#2D3748");
@@ -522,6 +618,13 @@ const metal: DistrictLibrary = {
 // ── Classical — cream stone, tan pillars, arched windows ──────────────────────
 
 const classical: DistrictLibrary = {
+  shack: shackDef({
+    wall: "#F5F5DC",
+    roof: "#E8DCC4",
+    door: "#B8A582",
+    window: "#B8A582",
+    twoWindows: true,
+  }),
   house: {
     voxels: dedup((() => {
       let vs = box(0, 2, 0, 1, 0, 2, "#F5F5DC");
@@ -582,6 +685,13 @@ const classical: DistrictLibrary = {
 // ── Latin — terracotta walls, warm orange bands, awnings ──────────────────────
 
 const latin: DistrictLibrary = {
+  shack: shackDef({
+    wall: "#9A3412",
+    roof: "#C2410C",
+    door: "#7A2A0E",
+    window: "#FED7AA",
+    twoWindows: true,
+  }),
   house: {
     voxels: dedup((() => {
       let vs = box(0, 2, 0, 1, 0, 2, "#9A3412");
@@ -637,6 +747,12 @@ const latin: DistrictLibrary = {
 // ── Other — quiet neutral concrete (intentionally understated) ────────────────
 
 const other: DistrictLibrary = {
+  shack: shackDef({
+    wall: "#9CA3AF",
+    roof: "#6B7280",
+    door: "#4B5563",
+    window: "#D4D4D8",
+  }),
   house: {
     voxels: dedup((() => {
       let vs = box(0, 1, 0, 1, 0, 2, "#9CA3AF");
@@ -694,6 +810,9 @@ export function lookupBuildingDef(
 
   let variant: BuildingVariant;
   switch (tier) {
+    case "shack":
+      variant = "shack";
+      break;
     case "house":
       variant = "house";
       break;
@@ -706,7 +825,7 @@ export function lookupBuildingDef(
       variant = "skyscraper";
       break;
     default:
-      return null; // shack: use fallback single-voxel
+      return null; // unknown tier: fall back to the palette column
   }
 
   return lib[variant] ?? null;
