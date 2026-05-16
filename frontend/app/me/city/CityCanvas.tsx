@@ -6,8 +6,8 @@ import { fetchAPI, ApiError } from "@/lib/api";
 import { useNowPlaying } from "@/lib/useNowPlaying";
 import { CityScene } from "./CityScene";
 import { TIER_LABEL } from "./constants";
-import { districtLayout } from "./grid";
-import type { BucketRow, CityPayload, PlacedArtist } from "./types";
+import { buildCity, type DistrictBlock } from "./grid";
+import type { CityPayload, PlacedArtist } from "./types";
 
 type Status =
   | { kind: "loading" }
@@ -45,11 +45,11 @@ export default function CityCanvas() {
     };
   }, []);
 
-  const placed: PlacedArtist[] = useMemo(
+  const { placed, blocks, parks } = useMemo(
     () =>
       status.kind === "ready"
-        ? districtLayout(status.data.artists, status.data.buckets)
-        : [],
+        ? buildCity(status.data.artists, status.data.buckets)
+        : { placed: [], blocks: [], parks: [] },
     [status]
   );
 
@@ -96,13 +96,15 @@ export default function CityCanvas() {
     <div className="relative h-full w-full">
       <Canvas
         shadows="percentage"
-        camera={{ position: [50, 45, 70], fov: 45, near: 0.1, far: 600 }}
+        camera={{ position: [90, 95, 130], fov: 26, near: 1, far: 600 }}
         gl={{ antialias: true }}
       >
-        <color attach="background" args={["#0a0a0a"]} />
-        <fog attach="fog" args={["#0a0a0a", 100, 300]} />
+        <color attach="background" args={["#1a1530"]} />
+        <fog attach="fog" args={["#1a1530", 200, 560]} />
         <CityScene
           artists={placed}
+          blocks={blocks}
+          parks={parks}
           buckets={status.data.buckets}
           hoveredId={hoveredId}
           selectedId={selectedId}
@@ -126,8 +128,7 @@ export default function CityCanvas() {
       {nowPlaying && <NowPlayingCard nowPlaying={nowPlaying} />}
 
       <MiniMap
-        buckets={status.data.buckets}
-        artists={placed}
+        blocks={blocks}
         nowPlayingBucket={
           nowPlayingId
             ? (placed.find((a) => a.spotify_id === nowPlayingId)
@@ -259,88 +260,102 @@ function NowPlayingCard({
 
 // ── MiniMap ───────────────────────────────────────────────────────────────────
 
-// Short label for each bucket in the 36px-wide mini-map cells.
+// First word of the label, clipped to fit a mini-map cell.
 function shortLabel(label: string): string {
-  return label.split(/[\s/]/)[0].slice(0, 6);
+  return label.split(/[\s/]/)[0].slice(0, 7);
 }
 
+// Top-down view of the actual block grid: one tile per district at its real
+// (col, row) slot, tile size scaled by how many artists live there — so the
+// mini-map reads like a zoomed-out version of the city itself.
 function MiniMap({
-  buckets,
-  artists,
+  blocks,
   nowPlayingBucket,
 }: {
-  buckets: BucketRow[];
-  artists: PlacedArtist[];
+  blocks: DistrictBlock[];
   nowPlayingBucket: string | null;
 }) {
-  const sorted = useMemo(
-    () => [...buckets].sort((a, b) => a.sort_order - b.sort_order),
-    [buckets]
-  );
+  if (blocks.length === 0) return null;
 
-  const occupied = useMemo(() => {
-    const s = new Set<string>();
-    for (const a of artists) if (a.primary_genre_bucket) s.add(a.primary_genre_bucket);
-    return s;
-  }, [artists]);
+  const nCols = Math.max(...blocks.map((b) => b.col)) + 1;
+  const nRows = Math.max(...blocks.map((b) => b.row)) + 1;
+  const maxCount = Math.max(...blocks.map((b) => b.count));
 
-  const COLS = 4;
-  const cellW = 38;
-  const cellH = 28;
-  const gap = 3;
-  const pad = 6;
-  const nRows = Math.ceil(sorted.length / COLS);
-  const svgW = COLS * cellW + (COLS - 1) * gap + 2 * pad;
+  const cellW = 44;
+  const cellH = 32;
+  const gap = 4; // the "road" in the mini-map
+  const pad = 7;
+  const svgW = nCols * cellW + (nCols - 1) * gap + 2 * pad;
   const svgH = nRows * cellH + (nRows - 1) * gap + 2 * pad;
 
   return (
-    <div className="absolute bottom-4 right-4 z-20 rounded-xl border border-zinc-800 bg-zinc-950/90 p-2 shadow-xl backdrop-blur select-none">
-      <p className="text-[10px] text-zinc-500 mb-1 px-1 tracking-wide uppercase">
+    <div className="absolute bottom-4 right-4 z-20 rounded-xl border-2 border-[#0a0812] bg-[rgba(15,12,24,0.85)] p-2 shadow-xl backdrop-blur select-none">
+      <p className="text-[10px] text-zinc-400 mb-1 px-1 tracking-[0.1em] uppercase">
         Districts
       </p>
       <svg width={svgW} height={svgH} aria-label="City district mini-map">
-        {sorted.map((bucket, i) => {
-          const col = i % COLS;
-          const row = Math.floor(i / COLS);
-          const x = pad + col * (cellW + gap);
-          const y = pad + row * (cellH + gap);
-          const isOccupied = occupied.has(bucket.slug);
-          const isNowPlaying = bucket.slug === nowPlayingBucket;
-          const fill = isOccupied ? bucket.color_palette[1] : "#27272a";
-          const textFill = isOccupied ? "#0a0a0a" : "#71717a";
+        {/* asphalt backplane — the gaps between tiles read as roads */}
+        <rect
+          x={0}
+          y={0}
+          width={svgW}
+          height={svgH}
+          rx={4}
+          fill="#3c352c"
+          opacity={0.35}
+        />
+        {blocks.map((b) => {
+          // Scale the tile by artist count (min 55% of the cell so tiny
+          // districts are still legible), centered in its grid slot.
+          const scale = 0.55 + 0.45 * Math.sqrt(b.count / maxCount);
+          const w = cellW * scale;
+          const h = cellH * scale;
+          const slotX = pad + b.col * (cellW + gap);
+          const slotY = pad + b.row * (cellH + gap);
+          const x = slotX + (cellW - w) / 2;
+          const y = slotY + (cellH - h) / 2;
+          const isNowPlaying = b.slug === nowPlayingBucket;
           return (
-            <g key={bucket.slug}>
+            <g key={b.slug}>
               <rect
                 x={x}
                 y={y}
-                width={cellW}
-                height={cellH}
-                rx={4}
-                fill={fill}
-                opacity={isOccupied ? 1 : 0.5}
+                width={w}
+                height={h}
+                rx={3}
+                fill={b.palette[1]}
+                stroke={b.palette[2]}
+                strokeWidth={1}
               />
               {isNowPlaying && (
                 <rect
-                  x={x - 1}
-                  y={y - 1}
-                  width={cellW + 2}
-                  height={cellH + 2}
-                  rx={5}
+                  x={x - 2}
+                  y={y - 2}
+                  width={w + 4}
+                  height={h + 4}
+                  rx={4}
                   fill="none"
-                  stroke="#4ade80"
+                  stroke="#FAFAF5"
                   strokeWidth={2}
-                />
+                >
+                  <animate
+                    attributeName="opacity"
+                    values="1;0.25;1"
+                    dur="1.6s"
+                    repeatCount="indefinite"
+                  />
+                </rect>
               )}
               <text
-                x={x + cellW / 2}
-                y={y + cellH / 2 + 4}
+                x={slotX + cellW / 2}
+                y={slotY + cellH / 2 + 3}
                 textAnchor="middle"
-                fill={textFill}
+                fill="#0a0a0a"
                 fontSize={8}
                 fontFamily="system-ui, sans-serif"
-                fontWeight={500}
+                fontWeight={600}
               >
-                {shortLabel(bucket.label)}
+                {shortLabel(b.label)}
               </text>
             </g>
           );
