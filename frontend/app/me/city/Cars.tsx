@@ -1,7 +1,7 @@
 "use client";
 
 import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { Group, MeshBasicMaterial, MeshStandardMaterial } from "three";
 import { ROAD_WIDTH } from "./constants";
 import type { Road } from "./grid";
@@ -66,10 +66,13 @@ export function Cars({ roads }: { roads: Road[] }) {
     return { xLanes: xs, zLanes: zs };
   }, [roads]);
 
-  const cars = useMemo<CarState[]>(
-    () => Array.from({ length: count }, () => spawn(roads)),
-    [roads, count],
-  );
+  // Car state lives in a ref, built in an effect — useFrame mutates it every
+  // frame, and the react-hooks lint (correctly) forbids mutating a useMemo
+  // value after render.
+  const carsRef = useRef<CarState[]>([]);
+  useEffect(() => {
+    carsRef.current = Array.from({ length: count }, () => spawn(roads));
+  }, [roads, count]);
 
   const groupRefs = useRef<(Group | null)[]>([]);
   const bodyRefs = useRef<(MeshStandardMaterial | null)[]>([]);
@@ -78,6 +81,7 @@ export function Cars({ roads }: { roads: Road[] }) {
   const tailRefs = useRef<(MeshBasicMaterial | null)[]>([]);
 
   useFrame((_, delta) => {
+    const cars = carsRef.current;
     for (let i = 0; i < cars.length; i++) {
       const c = cars[i];
       const road = roads[c.road];
@@ -145,7 +149,7 @@ export function Cars({ roads }: { roads: Road[] }) {
 
   return (
     <>
-      {cars.map((_, i) => (
+      {Array.from({ length: count }, (_, i) => (
         <group
           key={i}
           ref={(el) => {

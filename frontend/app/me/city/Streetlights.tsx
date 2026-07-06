@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import * as THREE from "three";
-import type { Road, Intersection } from "./grid";
+import type { Road } from "./grid";
 
 // Warm streetlights along every road — the small repeating light source that
 // sells "city at dusk". No real point lights: each lamp is a dark pole + an
@@ -111,12 +111,29 @@ function mergedPools(lamps: Lamp[], size: number): THREE.BufferGeometry {
   return geo;
 }
 
-export function Streetlights({
-  roads,
-}: {
-  roads: Road[];
-  intersections?: Intersection[];
-}) {
+// Radial warm gradient shared by every light pool. Same module-level lazy
+// singleton pattern as VoxelBuilding's contact-shadow texture (safe during
+// render — no state, no refs).
+let _poolTex: THREE.CanvasTexture | null = null;
+function poolTexture(): THREE.CanvasTexture | null {
+  if (_poolTex) return _poolTex;
+  if (typeof document === "undefined") return null;
+  const s = 128;
+  const cvs = document.createElement("canvas");
+  cvs.width = cvs.height = s;
+  const ctx = cvs.getContext("2d")!;
+  const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+  g.addColorStop(0, "rgba(255, 196, 120, 0.7)");
+  g.addColorStop(0.4, "rgba(255, 176, 100, 0.28)");
+  g.addColorStop(1, "rgba(255, 160, 90, 0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, s, s);
+  _poolTex = new THREE.CanvasTexture(cvs);
+  _poolTex.colorSpace = THREE.SRGBColorSpace;
+  return _poolTex;
+}
+
+export function Streetlights({ roads }: { roads: Road[] }) {
   const lamps = useMemo(() => placeLamps(roads), [roads]);
 
   const poles = useMemo(
@@ -155,7 +172,7 @@ export function Streetlights({
       })),
     [lamps],
   );
-  const pools = useMemo(() => mergedPools(lamps, 7), [lamps]);
+  const pools = useMemo(() => mergedPools(lamps, 5.5), [lamps]);
 
   useEffect(
     () => () => {
@@ -167,25 +184,7 @@ export function Streetlights({
     [poles, arms, bulbs, pools],
   );
 
-  // Radial warm gradient for the pools; built client-side in an effect-safe
-  // way (state, not ref-in-render).
-  const [poolTex, setPoolTex] = useState<THREE.CanvasTexture | null>(null);
-  useEffect(() => {
-    const s = 128;
-    const cvs = document.createElement("canvas");
-    cvs.width = cvs.height = s;
-    const ctx = cvs.getContext("2d")!;
-    const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
-    g.addColorStop(0, "rgba(255, 196, 120, 0.7)");
-    g.addColorStop(0.4, "rgba(255, 176, 100, 0.28)");
-    g.addColorStop(1, "rgba(255, 160, 90, 0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, s, s);
-    const tex = new THREE.CanvasTexture(cvs);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    setPoolTex(tex);
-    return () => tex.dispose();
-  }, []);
+  const poolTex = poolTexture();
 
   if (lamps.length === 0) return null;
 

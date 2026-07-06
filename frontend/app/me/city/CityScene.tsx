@@ -287,7 +287,7 @@ export function CityScene({
       ))}
 
       {/* Warm streetlights along the roads */}
-      <Streetlights roads={roads} intersections={intersections} />
+      <Streetlights roads={roads} />
 
       {/* Parks fill any empty grid slots */}
       {parks.map((p, i) => (
