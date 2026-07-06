@@ -2,25 +2,13 @@
 //
 // Mirrors the shape of GET /api/me/city/ so CityView renders exactly what a
 // real logged-in user would see, without needing Spotify OAuth or the
-// backend. Bucket slugs/labels/palettes are copied from genres.py::BUCKETS —
-// same contract the building library is keyed on.
+// backend. Bucket data comes from the shared static copy in lib/districts.
 
+import { DISTRICTS } from "@/lib/districts";
 import type { NowPlayingData } from "@/lib/useNowPlaying";
-import type { ArtistRow, BucketRow, CityPayload, Tier } from "../../me/city/types";
+import type { ArtistRow, CityPayload, Tier } from "../../me/city/types";
 
-const BUCKETS: BucketRow[] = [
-  { slug: "pop", label: "Pop", color_palette: ["#FFD1DC", "#FF69B4", "#C71585"], sort_order: 1 },
-  { slug: "hip-hop", label: "Hip-Hop", color_palette: ["#FFE599", "#FFC107", "#B8860B"], sort_order: 2 },
-  { slug: "r-and-b-soul", label: "R&B / Soul", color_palette: ["#D6BCFA", "#9F7AEA", "#553C9A"], sort_order: 3 },
-  { slug: "rock", label: "Rock", color_palette: ["#FCA5A5", "#EF4444", "#991B1B"], sort_order: 4 },
-  { slug: "metal", label: "Metal", color_palette: ["#A0AEC0", "#4A5568", "#1A202C"], sort_order: 5 },
-  { slug: "electronic", label: "Electronic", color_palette: ["#7DD3FC", "#06B6D4", "#0E7490"], sort_order: 6 },
-  { slug: "folk-singer-songwriter", label: "Folk / Singer-Songwriter", color_palette: ["#BBF7D0", "#22C55E", "#15803D"], sort_order: 7 },
-  { slug: "classical", label: "Classical", color_palette: ["#F5F5DC", "#E8DCC4", "#B8A582"], sort_order: 8 },
-  { slug: "jazz", label: "Jazz", color_palette: ["#A5B4FC", "#6366F1", "#3730A3"], sort_order: 9 },
-  { slug: "latin", label: "Latin", color_palette: ["#FED7AA", "#F97316", "#9A3412"], sort_order: 10 },
-  { slug: "other", label: "Other", color_palette: ["#E5E7EB", "#9CA3AF", "#4B5563"], sort_order: 99 },
-];
+const BUCKETS = DISTRICTS;
 
 // Artist counts roughly shaped like the real smoke-test account (hip-hop
 // heavy), padded so every district shows up with at least a few buildings.
