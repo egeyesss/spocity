@@ -39,6 +39,13 @@ export function CityView({
     [placed, hoveredId],
   );
 
+  // District accent colour (the palette's mid tone) for the HUD panels.
+  const accentFor = useMemo(() => {
+    const map = new Map(data.buckets.map((b) => [b.slug, b.color_palette[1]]));
+    return (slug: string | null): string =>
+      (slug ? map.get(slug) : undefined) ?? "#9CA3AF";
+  }, [data.buckets]);
+
   return (
     <div className="relative h-full w-full">
       <Canvas
@@ -61,12 +68,16 @@ export function CityView({
       </Canvas>
 
       {hoveredArtist && hoveredArtist.spotify_id !== selectedId && (
-        <HoverTooltip artist={hoveredArtist} />
+        <HoverTooltip
+          artist={hoveredArtist}
+          accent={accentFor(hoveredArtist.primary_genre_bucket)}
+        />
       )}
 
       {selectedArtist && (
         <DetailPanel
           artist={selectedArtist}
+          accent={accentFor(selectedArtist.primary_genre_bucket)}
           onClose={() => setSelectedId(null)}
         />
       )}

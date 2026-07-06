@@ -48,9 +48,9 @@ function shadowTexture(): THREE.CanvasTexture | null {
   return _shadowTex;
 }
 
-// Faint neutral lot tile (slightly darker than the cream ground) so each
-// building reads as sitting on its own plot, like the reference renders.
-const PAD_COLOR = "#D8CFB8";
+// Faint lot tile (slightly lighter than the dark ground) so each building
+// reads as sitting on its own plot, like the reference renders.
+const PAD_COLOR = "#2b2621";
 
 export function VoxelBuilding({
   district,
@@ -133,9 +133,9 @@ export function VoxelBuilding({
       onClick={onClick}
     >
       {/* Faint lot tile */}
-      <mesh position={[0, 0.05, 0]} receiveShadow>
+      <mesh position={[0, 0.05, 0]}>
         <boxGeometry args={[padW, 0.1, padD]} />
-        <meshStandardMaterial color={PAD_COLOR} roughness={1} metalness={0} />
+        <meshBasicMaterial color={PAD_COLOR} />
       </mesh>
 
       {/* Soft contact shadow, just above the pad */}
@@ -146,7 +146,7 @@ export function VoxelBuilding({
             map={sTex}
             transparent
             depthWrite={false}
-            opacity={0.7}
+            opacity={0.45}
           />
         </mesh>
       )}

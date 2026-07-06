@@ -9,6 +9,8 @@ export interface VoxelDef {
   y: number;
   z: number;
   color: string;
+  /** Lit at dusk: rendered unshaded + boosted, like a light source. */
+  glow?: boolean;
 }
 
 export type SpriteType =
@@ -72,6 +74,22 @@ function paint(
   return voxels.map((v) => (predicate(v) ? { ...v, color } : v));
 }
 
+// Like paint, but the painted voxels glow (lit windows, marquee bands).
+function paintGlow(
+  voxels: VoxelDef[],
+  predicate: (v: VoxelDef) => boolean,
+  color: string,
+): VoxelDef[] {
+  return voxels.map((v) =>
+    predicate(v) ? { ...v, color, glow: true } : v,
+  );
+}
+
+// Mark an already-built voxel list as glowing (for box() additions).
+function glowAll(voxels: VoxelDef[]): VoxelDef[] {
+  return voxels.map((v) => ({ ...v, glow: true }));
+}
+
 // Deduplicate same (x,y,z) coords — last entry wins (matches SVG painter behavior).
 function dedup(voxels: VoxelDef[]): VoxelDef[] {
   const map = new Map<string, VoxelDef>();
@@ -116,11 +134,11 @@ function shackDef(opts: {
     voxels: dedup(
       (() => {
         let vs = box(0, 1, 0, 1, 0, 0, opts.wall); // 2×2 single floor
-        // front door + window(s)
+        // front door + lit window(s)
         vs = paint(vs, (v) => v.x === 0 && v.y === 0 && v.z === 0, opts.door);
-        vs = paint(vs, (v) => v.x === 1 && v.y === 0 && v.z === 0, opts.window);
+        vs = paintGlow(vs, (v) => v.x === 1 && v.y === 0 && v.z === 0, opts.window);
         if (opts.twoWindows)
-          vs = paint(vs, (v) => v.x === 1 && v.y === 1 && v.z === 0, opts.window);
+          vs = paintGlow(vs, (v) => v.x === 1 && v.y === 1 && v.z === 0, opts.window);
         vs = vs.concat(box(0, 1, 0, 1, 1, 1, opts.roof)); // roof cap
         if (opts.chimney) vs = vs.concat([sv(1, 1, 2, opts.chimney)]);
         return vs;
@@ -147,7 +165,7 @@ const electronic: DistrictLibrary = {
     voxels: dedup((() => {
       let vs = box(0, 1, 0, 1, 0, 1, "#155E75");
       vs = vs.concat(box(0, 1, 0, 1, 2, 2, "#06B6D4"));
-      vs = paint(vs, (v) => v.x === 1 && v.y === 0 && v.z === 1, "#FBBF24");
+      vs = paintGlow(vs, (v) => v.x === 1 && v.y === 0 && v.z === 1, "#FBBF24");
       return vs;
     })()),
     sprites: [
@@ -161,7 +179,8 @@ const electronic: DistrictLibrary = {
       vs = vs.map((v) => {
         const isOuter = v.x === 0 || v.x === 2 || v.y === 0 || v.y === 2;
         if (isOuter && (v.z === 1 || v.z === 3)) return { ...v, color: "#06B6D4" };
-        if (isOuter && (v.z === 2 || v.z === 4)) return { ...v, color: "#22D3EE" };
+        if (isOuter && (v.z === 2 || v.z === 4))
+          return { ...v, color: "#22D3EE", glow: true }; // lit glass band
         return v;
       });
       vs = vs.concat(box(0, 2, 0, 2, 6, 6, "#155E75"));
@@ -176,7 +195,9 @@ const electronic: DistrictLibrary = {
   skyscraper: {
     voxels: dedup((() => {
       let vs = box(0, 1, 0, 1, 0, 11, "#155E75");
-      vs = vs.map((v) => (v.z % 2 === 1 ? { ...v, color: "#22D3EE" } : v));
+      vs = vs.map((v) =>
+        v.z % 2 === 1 ? { ...v, color: "#22D3EE", glow: true } : v,
+      );
       vs = vs.concat(box(0, 0, 0, 0, 12, 13, "#06B6D4"));
       vs = vs.concat(box(-1, 2, -1, 2, 0, 0, "#0E7490")); // wide podium — dedup resolves overlap
       return vs;
@@ -217,12 +238,12 @@ const pop: DistrictLibrary = {
       vs = vs.concat(box(0, 2, 0, 2, 2, 3, "#FFC1D9"));
       vs = vs.concat(box(0, 2, 0, 2, 4, 4, "#FF8FCB"));
       vs = vs.concat(box(0, 1, 0, 1, 5, 6, "#FFD1DC"));
-      vs = paint(
+      vs = paintGlow(
         vs,
         (v) => (v.x === 0 || v.x === 2 || v.y === 0 || v.y === 2) && v.z === 1 && (v.x + v.y) % 2 === 0,
         "#FAFAF5",
       );
-      vs = paint(
+      vs = paintGlow(
         vs,
         (v) => (v.x === 0 || v.x === 2 || v.y === 0 || v.y === 2) && v.z === 3 && (v.x + v.y) % 2 === 1,
         "#FAFAF5",
@@ -242,7 +263,7 @@ const pop: DistrictLibrary = {
       vs = vs.concat(box(0, 1, 0, 1, 6, 8, "#FFD1DC"));
       vs = vs.concat(box(0, 1, 0, 1, 9, 9, "#FF69B4"));
       vs = vs.concat(box(0, 0, 0, 0, 10, 11, "#FFE599"));
-      vs = paint(
+      vs = paintGlow(
         vs,
         (v) =>
           (v.x === 0 || v.x === 1) &&
@@ -288,8 +309,8 @@ const hiphop: DistrictLibrary = {
       let vs = box(0, 3, 0, 1, 0, 4, "#7c3a17");
       vs = vs.concat(box(0, 1, 2, 3, 0, 4, "#7c3a17"));
       vs = paint(vs, (v) => v.z === 2, "#B8860B");
-      vs = paint(vs, (v) => (v.x === 0 || v.x === 3) && v.y === 0 && (v.z === 1 || v.z === 3), "#FFE599");
-      vs = paint(vs, (v) => v.x === 0 && (v.y === 2 || v.y === 3) && (v.z === 1 || v.z === 3), "#FFE599");
+      vs = paintGlow(vs, (v) => (v.x === 0 || v.x === 3) && v.y === 0 && (v.z === 1 || v.z === 3), "#FFE599");
+      vs = paintGlow(vs, (v) => v.x === 0 && (v.y === 2 || v.y === 3) && (v.z === 1 || v.z === 3), "#FFE599");
       vs = vs.concat(box(2, 2, 0, 0, 5, 6, "#5a2d11"));
       return vs;
     })()),
@@ -305,7 +326,7 @@ const hiphop: DistrictLibrary = {
       vs = paint(vs, (v) => v.z === 3 || v.z === 6 || v.z === 9, "#B8860B");
       vs = vs.concat(box(0, 1, 0, 1, 11, 12, "#FFC107"));
       vs = vs.concat(box(0, 0, 0, 0, 13, 13, "#FFD700"));
-      vs = paint(vs, (v) => v.z >= 1 && v.z <= 10 && v.z % 2 === 0 && v.x + v.y === 1, "#FFE599");
+      vs = paintGlow(vs, (v) => v.z >= 1 && v.z <= 10 && v.z % 2 === 0 && v.x + v.y === 1, "#FFE599");
       return vs;
     })()),
     sprites: [
@@ -342,7 +363,7 @@ const rock: DistrictLibrary = {
       let vs = box(0, 3, 0, 2, 0, 3, "#5a0e0e");
       vs = paint(vs, (v) => v.z === 0, "#1a0a0a");
       vs = paint(vs, (v) => v.z === 3, "#1a0a0a");
-      vs = paint(vs, (v) => (v.x === 0 || v.x === 3) && (v.z === 1 || v.z === 2) && v.y === 0, "#EF4444");
+      vs = paintGlow(vs, (v) => (v.x === 0 || v.x === 3) && (v.z === 1 || v.z === 2) && v.y === 0, "#EF4444");
       vs = vs.concat(box(1, 2, 1, 1, 4, 4, "#7c1a1a"));
       return vs;
     })()),
@@ -357,8 +378,8 @@ const rock: DistrictLibrary = {
       vs = paint(vs, (v) => v.z === 0, "#1a0a0a");
       vs = vs.concat(box(0, 2, 0, 2, 2, 3, "#7c1a1a"));
       vs = vs.concat(box(1, 1, 1, 1, 4, 9, "#1a0a0a"));
-      vs = paint(vs, (v) => v.x === 1 && v.y === 1 && v.z === 6, "#EF4444");
-      vs = paint(vs, (v) => v.x === 1 && v.y === 1 && v.z === 8, "#EF4444");
+      vs = paintGlow(vs, (v) => v.x === 1 && v.y === 1 && v.z === 6, "#EF4444");
+      vs = paintGlow(vs, (v) => v.x === 1 && v.y === 1 && v.z === 8, "#EF4444");
       return vs;
     })()),
     sprites: [
@@ -398,7 +419,7 @@ const folk: DistrictLibrary = {
     voxels: dedup((() => {
       let vs = box(0, 3, 0, 1, 0, 2, "#A0805A");
       vs = paint(vs, (v) => v.z === 1 && v.x % 2 === 0, "#8B6F47");
-      vs = paint(vs, (v) => v.y === 0 && v.z === 1 && (v.x === 1 || v.x === 3), "#FFE599");
+      vs = paintGlow(vs, (v) => v.y === 0 && v.z === 1 && (v.x === 1 || v.x === 3), "#FFE599");
       vs = vs.concat(box(0, 3, 0, 1, 3, 3, "#1f6b30"));
       vs = vs.concat(box(0, 3, 0, 1, 4, 4, "#15803D").filter((v) => v.x % 2 === 0));
       return vs;
@@ -412,7 +433,7 @@ const folk: DistrictLibrary = {
     voxels: dedup((() => {
       let vs = box(0, 1, 0, 1, 0, 9, "#8B6F47");
       vs = paint(vs, (v) => v.z === 2 || v.z === 5 || v.z === 8, "#22C55E");
-      vs = paint(vs, (v) => (v.z === 3 || v.z === 6) && v.x + v.y === 1, "#FFE599");
+      vs = paintGlow(vs, (v) => (v.z === 3 || v.z === 6) && v.x + v.y === 1, "#FFE599");
       vs = vs.concat(box(-1, 2, -1, 2, 0, 0, "#6b5532")); // broad base — dedup handles overlap
       vs = vs.concat(box(-1, 2, -1, 2, 10, 10, "#15803D")); // green crown
       vs = vs.concat(box(0, 1, 0, 1, 11, 11, "#22C55E"));
@@ -439,7 +460,7 @@ const jazz: DistrictLibrary = {
       let vs = box(0, 2, 0, 1, 0, 1, "#3730A3");
       vs = paint(vs, (v) => v.z === 0, "#1e1b4b");
       vs = paint(vs, (v) => v.x === 1 && v.y === 0 && v.z === 0, "#B8860B");
-      vs = vs.concat(box(0, 2, 0, 1, 2, 2, "#B8860B"));
+      vs = vs.concat(glowAll(box(0, 2, 0, 1, 2, 2, "#B8860B"))); // lit marquee cap
       return vs;
     })()),
     sprites: [
@@ -461,7 +482,7 @@ const jazz: DistrictLibrary = {
         "#B8860B",
       );
       vs = vs.concat(box(1, 1, 1, 1, 4, 5, "#3730A3"));
-      vs = vs.concat(box(1, 1, 1, 1, 6, 6, "#B8860B"));
+      vs = vs.concat(glowAll(box(1, 1, 1, 1, 6, 6, "#B8860B"))); // lit marquee cap
       return vs;
     })()),
     sprites: [
@@ -473,17 +494,17 @@ const jazz: DistrictLibrary = {
     voxels: dedup((() => {
       let vs = box(-1, 2, -1, 2, 0, 0, "#1e1b4b");
       vs = vs.concat(box(0, 1, 0, 1, 1, 6, "#3730A3"));
-      vs = vs.concat(box(0, 1, 0, 1, 7, 7, "#B8860B"));
+      vs = vs.concat(glowAll(box(0, 1, 0, 1, 7, 7, "#B8860B"))); // marquee band
       vs = vs.concat(box(0, 1, 0, 1, 8, 10, "#3730A3"));
-      vs = vs.concat(box(0, 1, 0, 1, 11, 11, "#B8860B"));
+      vs = vs.concat(glowAll(box(0, 1, 0, 1, 11, 11, "#B8860B"))); // marquee band
       vs = vs.concat(box(0, 0, 0, 0, 12, 14, "#3730A3"));
-      vs = vs.concat([sv(0, 0, 15, "#B8860B")]);
-      vs = paint(
+      vs = vs.concat(glowAll([sv(0, 0, 15, "#B8860B")])); // lit spire tip
+      vs = paintGlow(
         vs,
         (v) => v.x === 0 && v.y === 0 && v.z >= 2 && v.z <= 6 && v.z % 2 === 0,
         "#6366F1",
       );
-      vs = paint(
+      vs = paintGlow(
         vs,
         (v) => v.x === 1 && v.y === 1 && v.z >= 2 && v.z <= 6 && v.z % 2 === 1,
         "#6366F1",
@@ -511,7 +532,7 @@ const rnb: DistrictLibrary = {
       let vs = box(0, 2, 0, 1, 0, 2, "#7C5DB8");
       vs = paint(vs, (v) => v.z === 0, "#553C9A");
       vs = paint(vs, (v) => v.x === 1 && v.y === 0 && v.z === 0, "#B8860B");
-      vs = paint(vs, (v) => v.y === 0 && v.z === 1 && (v.x === 0 || v.x === 2), "#D6BCFA");
+      vs = paintGlow(vs, (v) => v.y === 0 && v.z === 1 && (v.x === 0 || v.x === 2), "#D6BCFA");
       vs = vs.concat(box(0, 2, 0, 1, 3, 3, "#9F7AEA"));
       return vs;
     })()),
@@ -524,7 +545,7 @@ const rnb: DistrictLibrary = {
     voxels: dedup((() => {
       let vs = box(0, 2, 0, 2, 0, 5, "#6B4FA0");
       vs = paint(vs, (v) => v.z === 0, "#553C9A");
-      vs = paint(
+      vs = paintGlow(
         vs,
         (v) => (v.x === 0 || v.x === 2 || v.y === 0 || v.y === 2) && (v.z === 1 || v.z === 4),
         "#D6BCFA",
@@ -542,7 +563,7 @@ const rnb: DistrictLibrary = {
     voxels: dedup((() => {
       let vs = box(-1, 2, -1, 2, 0, 0, "#553C9A");
       vs = vs.concat(box(0, 1, 0, 1, 1, 9, "#6B4FA0"));
-      vs = paint(
+      vs = paintGlow(
         vs,
         (v) => (v.x === 0 || v.x === 1) && (v.y === 0 || v.y === 1) && v.z % 3 === 2,
         "#D6BCFA",
@@ -572,7 +593,7 @@ const metal: DistrictLibrary = {
     voxels: dedup((() => {
       let vs = box(0, 2, 0, 1, 0, 2, "#2D3748");
       vs = paint(vs, (v) => v.z === 0, "#1A202C");
-      vs = paint(vs, (v) => v.y === 0 && v.z === 1 && (v.x === 0 || v.x === 2), "#4A5568");
+      vs = paintGlow(vs, (v) => v.y === 0 && v.z === 1 && (v.x === 0 || v.x === 2), "#4A5568");
       vs = vs.concat(box(1, 1, 0, 1, 3, 4, "#1A202C")); // angular spike
       return vs;
     })()),
@@ -584,7 +605,7 @@ const metal: DistrictLibrary = {
   apartment: {
     voxels: dedup((() => {
       let vs = box(0, 2, 0, 2, 0, 5, "#1A202C");
-      vs = paint(
+      vs = paintGlow(
         vs,
         (v) =>
           (v.x === 0 || v.x === 2 || v.y === 0 || v.y === 2) &&
@@ -630,7 +651,7 @@ const classical: DistrictLibrary = {
       let vs = box(0, 2, 0, 1, 0, 2, "#F5F5DC");
       vs = paint(vs, (v) => v.z === 0, "#E8DCC4");
       vs = paint(vs, (v) => (v.x === 0 || v.x === 2) && v.z <= 1, "#B8A582"); // corner pillars
-      vs = paint(vs, (v) => v.x === 1 && v.y === 0 && v.z === 1, "#B8A582"); // arch window
+      vs = paintGlow(vs, (v) => v.x === 1 && v.y === 0 && v.z === 1, "#B8A582"); // arch window
       vs = vs.concat(box(0, 2, 0, 1, 3, 3, "#E8DCC4")); // cornice
       return vs;
     })()),
@@ -648,7 +669,7 @@ const classical: DistrictLibrary = {
         (v) => (v.x === 0 || v.x === 2) && (v.y === 0 || v.y === 2),
         "#B8A582",
       ); // pillared corners full height
-      vs = paint(
+      vs = paintGlow(
         vs,
         (v) => v.x === 1 && v.y === 0 && (v.z === 2 || v.z === 4),
         "#E8DCC4",
@@ -697,7 +718,7 @@ const latin: DistrictLibrary = {
       let vs = box(0, 2, 0, 1, 0, 2, "#9A3412");
       vs = paint(vs, (v) => v.z === 0, "#7A2A0E");
       vs = paint(vs, (v) => v.z === 2, "#F97316"); // decorative band
-      vs = paint(vs, (v) => v.y === 0 && v.z === 1 && (v.x === 0 || v.x === 2), "#FED7AA");
+      vs = paintGlow(vs, (v) => v.y === 0 && v.z === 1 && (v.x === 0 || v.x === 2), "#FED7AA");
       vs = vs.concat(box(0, 2, 0, 1, 3, 3, "#C2410C"));
       return vs;
     })()),
@@ -710,7 +731,7 @@ const latin: DistrictLibrary = {
     voxels: dedup((() => {
       let vs = box(0, 2, 0, 2, 0, 5, "#9A3412");
       vs = paint(vs, (v) => v.z === 0, "#7A2A0E");
-      vs = paint(
+      vs = paintGlow(
         vs,
         (v) => (v.x === 0 || v.x === 2 || v.y === 0 || v.y === 2) && (v.z === 1 || v.z === 4),
         "#FED7AA",
@@ -729,7 +750,7 @@ const latin: DistrictLibrary = {
       let vs = box(-1, 2, -1, 2, 0, 0, "#7A2A0E");
       vs = vs.concat(box(0, 1, 0, 1, 1, 10, "#9A3412"));
       vs = paint(vs, (v) => v.z === 3 || v.z === 6 || v.z === 9, "#F97316"); // bands
-      vs = paint(
+      vs = paintGlow(
         vs,
         (v) => (v.x === 0 || v.x === 1) && (v.y === 0 || v.y === 1) && v.z % 3 === 1,
         "#FED7AA",

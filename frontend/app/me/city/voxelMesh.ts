@@ -136,7 +136,9 @@ export function buildVoxelMesh(voxels: VoxelDef[]): VoxelMesh {
       // Skip any face shared with a neighbour voxel — it can never be seen.
       if (occupied.has(`${v.x + f.nx},${v.y + f.ny},${v.z + f.nz}`)) continue;
 
-      const k = FACE_SHADE[f.shade];
+      // Glow voxels (lit windows, marquee bands) are light sources: no face
+      // shading + a boost past 1 so they read as emissive at dusk.
+      const k = v.glow ? 1.35 : FACE_SHADE[f.shade];
       const cr = lr * k;
       const cg = lg * k;
       const cb = lb * k;

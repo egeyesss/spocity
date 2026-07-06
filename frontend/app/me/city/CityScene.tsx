@@ -11,17 +11,25 @@ import { Cars } from "./Cars";
 import { Outskirts } from "./Outskirts";
 import { Skybox, SKY_HORIZON, SKY_TOP } from "./Skybox";
 import { StreetFurniture } from "./StreetFurniture";
+import { Streetlights } from "./Streetlights";
+import { shade } from "./buildingDefs";
 import { cityRoads } from "./grid";
 import type { DistrictBlock, ParkCell } from "./grid";
 import type { NowPlayingData } from "@/lib/useNowPlaying";
 import type { BucketRow, PlacedArtist } from "./types";
 import { VoxelBuilding } from "./VoxelBuilding";
 
-// Ground / street palette.
-const CREAM = "#E9E1CE"; // base ground + block tiles
-const PAVEMENT = "#6E6E73"; // classic road gray
-const ROAD_LINE = "#F2C200"; // road-marking yellow
-const GRASS = "#4F9E55"; // park tile
+// Dusk ground / street palette (building-visual-design.md tokens). The whole
+// ground layer is dark so the buildings' baked colors + glow carry the scene —
+// the earlier cream daytime ground fought the dusk sky and washed everything
+// into gray.
+// The ground layer is unlit (meshBasicMaterial) just like the buildings:
+// these are the exact on-screen colors, chosen against the dusk sky. Lights
+// only shape the few volumetric props (cars, trees keep a hint of form).
+const GROUND = "#262030"; // dark plum ground plane
+const ASPHALT = "#3c352c"; // spec `asphalt` — warm dark roads
+const ROAD_LINE = "#C9BFA8"; // faint warm lane dashes (drawn at low opacity)
+const GRASS = "#2E5133"; // park tile, dusk green
 
 function mulberry32(seed: number) {
   let a = seed >>> 0;
@@ -51,12 +59,10 @@ function Park({ park, seed }: { park: ParkCell; seed: number }) {
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[park.cx, 0.05, park.cz]}
-        receiveShadow
       >
         <planeGeometry args={[w, h]} />
-        <meshStandardMaterial
+        <meshBasicMaterial
           color={GRASS}
-          roughness={1}
           polygonOffset
           polygonOffsetFactor={-2}
           polygonOffsetUnits={-2}
@@ -64,17 +70,17 @@ function Park({ park, seed }: { park: ParkCell; seed: number }) {
       </mesh>
       {trees.map((t, i) => (
         <group key={i} position={[t.tx, 0, t.tz]} scale={[t.s, t.s, t.s]}>
-          <mesh position={[0, 0.55, 0]} castShadow>
+          <mesh position={[0, 0.55, 0]}>
             <boxGeometry args={[0.34, 1.1, 0.34]} />
-            <meshStandardMaterial color="#6B4F2A" roughness={0.9} />
+            <meshBasicMaterial color="#4a3620" />
           </mesh>
-          <mesh position={[0, 1.7, 0]} castShadow>
+          <mesh position={[0, 1.7, 0]}>
             <boxGeometry args={[1.5, 1.3, 1.5]} />
-            <meshStandardMaterial color="#2F8F3C" roughness={0.8} />
+            <meshBasicMaterial color="#22502c" />
           </mesh>
-          <mesh position={[0, 2.5, 0]} castShadow>
+          <mesh position={[0, 2.5, 0]}>
             <boxGeometry args={[0.95, 0.8, 0.95]} />
-            <meshStandardMaterial color="#37A347" roughness={0.8} />
+            <meshBasicMaterial color="#2d6338" />
           </mesh>
         </group>
       ))}
@@ -166,23 +172,24 @@ export function CityScene({
       <fog attach="fog" args={[SKY_HORIZON, fogNear, fogFar]} />
       <Skybox />
 
-      {/* Neutral fill so the ground/props read true (buildings are unlit and
-          carry their own baked shading, so lights only touch ground, pads,
-          trees, cars and antenna tips). No purple tint — it muddied the
-          design palette. */}
-      <hemisphereLight args={["#d8dde6", "#cbbd9e", 0.5]} />
+      {/* Dusk lighting for the lit props (ground, roads, trees, cars, pads —
+          buildings are unlit and carry their own baked shading). A cool
+          indigo hemisphere + one warm low "last light" directional keep the
+          ground dark but readable. */}
+      <hemisphereLight args={["#584d70", "#241f1a", 0.55]} />
       <directionalLight
-        position={[40, 80, 30]}
-        intensity={0.9}
+        position={[-60, 45, 40]}
+        color="#ffb37a"
+        intensity={0.35}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
       />
-      <ambientLight intensity={0.3} />
+      <ambientLight intensity={0.22} color="#8a80a8" />
 
-      <Stars radius={300} depth={60} count={500} factor={1.5} saturation={0} fade speed={0} />
+      <Stars radius={300} depth={60} count={900} factor={1.6} saturation={0} fade speed={0} />
 
-      {/* Cream base ground */}
+      {/* Dark warm base ground */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, 0, 0]}
@@ -190,8 +197,28 @@ export function CityScene({
         onPointerMissed={() => onSelect(null)}
       >
         <planeGeometry args={[groundSize, groundSize]} />
-        <meshStandardMaterial color={CREAM} roughness={1} metalness={0} />
+        <meshBasicMaterial color={GROUND} />
       </mesh>
+
+      {/* District block tiles: the district's darkest tone, darkened further —
+          a subtle neighborhood tint under each block (reads as its own ground,
+          not paint, now that the base is dark too). */}
+      {blocks.map((b) => (
+        <mesh
+          key={`tile-${b.slug}`}
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[b.cx, 0.01, b.cz]}
+          receiveShadow
+        >
+          <planeGeometry args={[b.x1 - b.x0 + 2, b.z1 - b.z0 + 2]} />
+          <meshBasicMaterial
+            color={shade(b.palette[2], -0.6)}
+            polygonOffset
+            polygonOffsetFactor={-0.5}
+            polygonOffsetUnits={-0.5}
+          />
+        </mesh>
+      ))}
 
       {/* "Rest of the city" filler around the real districts */}
       {bounds && <Outskirts bounds={bounds} horizon={SKY_HORIZON} />}
@@ -224,10 +251,8 @@ export function CityScene({
             receiveShadow
           >
             <planeGeometry args={[sx, sz]} />
-            <meshStandardMaterial
-              color={PAVEMENT}
-              roughness={1}
-              metalness={0}
+            <meshBasicMaterial
+              color={ASPHALT}
               polygonOffset
               polygonOffsetFactor={vertical ? -1 : -1.5}
               polygonOffsetUnits={vertical ? -1 : -1.5}
@@ -236,7 +261,7 @@ export function CityScene({
         );
       })}
 
-      {/* Yellow dashed centerline running the full length of every road */}
+      {/* Faint dashed centerline running the full length of every road */}
       {roads.map((r, i) => (
         <Line
           key={`line-${i}`}
@@ -252,12 +277,17 @@ export function CityScene({
                 ]
           }
           color={ROAD_LINE}
-          lineWidth={2}
+          lineWidth={1.5}
+          transparent
+          opacity={0.35}
           dashed
           dashSize={2.4}
           gapSize={2.2}
         />
       ))}
+
+      {/* Warm streetlights along the roads */}
+      <Streetlights roads={roads} intersections={intersections} />
 
       {/* Parks fill any empty grid slots */}
       {parks.map((p, i) => (

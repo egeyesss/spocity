@@ -6,9 +6,23 @@ import { TIER_LABEL } from "./constants";
 import type { DistrictBlock } from "./grid";
 import type { PlacedArtist } from "./types";
 
+// In-city HUD, retro-voxel styling (building-visual-design.md §HUD):
+// dark rgba(15,12,24) panels, 2px hard borders, pixel-art drop shadows,
+// VT323 for labels, Space Grotesk for artist names. This aesthetic lives
+// only inside the city view — never on the marketing/auth surfaces.
+
+const PANEL =
+  "border-2 border-[#0a0812] bg-[rgba(15,12,24,0.88)] shadow-[3px_3px_0_0_rgba(0,0,0,0.55)] backdrop-blur";
+
 // ── HoverTooltip ──────────────────────────────────────────────────────────────
 
-export function HoverTooltip({ artist }: { artist: PlacedArtist }) {
+export function HoverTooltip({
+  artist,
+  accent,
+}: {
+  artist: PlacedArtist;
+  accent: string;
+}) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -21,12 +35,17 @@ export function HoverTooltip({ artist }: { artist: PlacedArtist }) {
 
   return (
     <div
-      className="pointer-events-none fixed z-30 rounded-md border border-zinc-700 bg-zinc-900/90 px-3 py-2 text-xs shadow-lg backdrop-blur"
-      style={{ left: pos.x + 14, top: pos.y + 14 }}
+      className={`pointer-events-none fixed z-30 px-3 py-2 ${PANEL}`}
+      style={{ left: pos.x + 14, top: pos.y + 14, borderColor: accent }}
     >
-      <div className="font-medium text-zinc-100">{artist.name}</div>
-      <div className="text-zinc-400">
-        {TIER_LABEL[artist.tier]} · score {Math.round(artist.score)}
+      <div className="font-display text-sm font-bold text-zinc-100">
+        {artist.name}
+      </div>
+      <div
+        className="font-pixel text-sm uppercase tracking-[0.08em]"
+        style={{ color: accent }}
+      >
+        {TIER_LABEL[artist.tier]} · {Math.round(artist.score)} pts
       </div>
     </div>
   );
@@ -36,18 +55,23 @@ export function HoverTooltip({ artist }: { artist: PlacedArtist }) {
 
 export function DetailPanel({
   artist,
+  accent,
   onClose,
 }: {
   artist: PlacedArtist;
+  accent: string;
   onClose: () => void;
 }) {
   return (
-    <aside className="absolute right-4 top-4 z-20 w-72 rounded-xl border border-zinc-800 bg-zinc-950/90 p-4 shadow-2xl backdrop-blur">
+    <aside
+      className={`absolute right-4 top-4 z-20 w-72 p-4 ${PANEL}`}
+      style={{ borderColor: accent }}
+    >
       <button
         type="button"
         onClick={onClose}
         aria-label="Close"
-        className="absolute right-3 top-3 text-zinc-500 hover:text-zinc-200"
+        className="absolute right-3 top-2 font-pixel text-lg text-zinc-500 hover:text-zinc-200"
       >
         ✕
       </button>
@@ -57,28 +81,43 @@ export function DetailPanel({
         <img
           src={artist.image_url}
           alt={artist.name}
-          className="mb-3 h-32 w-full rounded-lg object-cover"
+          className="mb-3 h-32 w-full border-2 border-[#0a0812] object-cover"
         />
       ) : (
-        <div className="mb-3 h-32 w-full rounded-lg bg-zinc-800" />
+        <div className="mb-3 h-32 w-full border-2 border-[#0a0812] bg-zinc-900" />
       )}
 
-      <h3 className="text-lg font-semibold text-zinc-100">{artist.name}</h3>
-      <p className="text-sm text-zinc-400">{TIER_LABEL[artist.tier]}</p>
+      <h3 className="font-display text-lg font-bold text-zinc-100">
+        {artist.name}
+      </h3>
+      <p
+        className="font-pixel text-base uppercase tracking-[0.08em]"
+        style={{ color: accent }}
+      >
+        {TIER_LABEL[artist.tier]}
+      </p>
 
       <dl className="mt-4 grid grid-cols-2 gap-y-2 text-xs">
-        <dt className="text-zinc-500">Score</dt>
+        <dt className="font-pixel text-sm uppercase tracking-[0.08em] text-zinc-500">
+          Score
+        </dt>
         <dd className="text-zinc-200">{Math.round(artist.score)}</dd>
 
-        <dt className="text-zinc-500">Seed</dt>
+        <dt className="font-pixel text-sm uppercase tracking-[0.08em] text-zinc-500">
+          Seed
+        </dt>
         <dd className="text-zinc-200">{Math.round(artist.seed_score)}</dd>
 
-        <dt className="text-zinc-500">District</dt>
+        <dt className="font-pixel text-sm uppercase tracking-[0.08em] text-zinc-500">
+          District
+        </dt>
         <dd className="text-zinc-200">
           {artist.primary_genre_bucket ?? "—"}
         </dd>
 
-        <dt className="text-zinc-500">Last played</dt>
+        <dt className="font-pixel text-sm uppercase tracking-[0.08em] text-zinc-500">
+          Last played
+        </dt>
         <dd className="text-zinc-200">
           {artist.last_played_at
             ? new Date(artist.last_played_at).toLocaleDateString()
@@ -97,26 +136,28 @@ export function NowPlayingCard({
   nowPlaying: NowPlayingData;
 }) {
   return (
-    <div className="absolute bottom-4 left-4 z-20 flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950/90 px-3 py-2 shadow-2xl backdrop-blur max-w-xs">
+    <div
+      className={`absolute bottom-4 left-4 z-20 flex max-w-xs items-center gap-3 px-3 py-2 ${PANEL}`}
+    >
       {nowPlaying.album_image ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={nowPlaying.album_image}
           alt="Album art"
-          className="h-10 w-10 rounded-md object-cover flex-shrink-0"
+          className="h-10 w-10 flex-shrink-0 border-2 border-[#0a0812] object-cover"
         />
       ) : (
-        <div className="h-10 w-10 rounded-md bg-zinc-800 flex-shrink-0" />
+        <div className="h-10 w-10 flex-shrink-0 border-2 border-[#0a0812] bg-zinc-900" />
       )}
       <div className="min-w-0">
-        <p className="text-xs text-zinc-500 mb-0.5 flex items-center gap-1">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+        <p className="mb-0.5 flex items-center gap-1.5 font-pixel text-sm uppercase tracking-[0.1em] text-[#4ADE80]">
+          <span className="inline-block h-1.5 w-1.5 animate-pulse bg-[#4ADE80]" />
           Now Playing
         </p>
-        <p className="text-sm font-medium text-zinc-100 truncate">
+        <p className="truncate font-display text-sm font-bold text-zinc-100">
           {nowPlaying.track_name}
         </p>
-        <p className="text-xs text-zinc-400 truncate">
+        <p className="truncate text-xs text-zinc-400">
           {nowPlaying.artist_name}
         </p>
       </div>
@@ -155,8 +196,8 @@ export function MiniMap({
   const svgH = nRows * cellH + (nRows - 1) * gap + 2 * pad;
 
   return (
-    <div className="absolute bottom-4 right-4 z-20 rounded-xl border-2 border-[#0a0812] bg-[rgba(15,12,24,0.85)] p-2 shadow-xl backdrop-blur select-none">
-      <p className="text-[10px] text-zinc-400 mb-1 px-1 tracking-[0.1em] uppercase">
+    <div className={`absolute bottom-4 right-4 z-20 select-none p-2 ${PANEL}`}>
+      <p className="mb-1 px-1 font-pixel text-sm uppercase tracking-[0.12em] text-zinc-400">
         Districts
       </p>
       <svg width={svgW} height={svgH} aria-label="City district mini-map">
@@ -166,7 +207,6 @@ export function MiniMap({
           y={0}
           width={svgW}
           height={svgH}
-          rx={4}
           fill="#3c352c"
           opacity={0.35}
         />
@@ -188,7 +228,6 @@ export function MiniMap({
                 y={y}
                 width={w}
                 height={h}
-                rx={3}
                 fill={b.palette[1]}
                 stroke={b.palette[2]}
                 strokeWidth={1}
@@ -199,7 +238,6 @@ export function MiniMap({
                   y={y - 2}
                   width={w + 4}
                   height={h + 4}
-                  rx={4}
                   fill="none"
                   stroke="#FAFAF5"
                   strokeWidth={2}
@@ -214,14 +252,13 @@ export function MiniMap({
               )}
               <text
                 x={slotX + cellW / 2}
-                y={slotY + cellH / 2 + 3}
+                y={slotY + cellH / 2 + 4}
                 textAnchor="middle"
                 fill="#0a0a0a"
-                fontSize={8}
-                fontFamily="system-ui, sans-serif"
-                fontWeight={600}
+                fontSize={12}
+                fontFamily="var(--font-vt323), monospace"
               >
-                {shortLabel(b.label)}
+                {shortLabel(b.label).toUpperCase()}
               </text>
             </g>
           );
