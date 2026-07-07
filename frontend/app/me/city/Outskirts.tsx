@@ -109,6 +109,46 @@ function buildOutskirts(rect: Rect, horizonHex: string): THREE.BufferGeometry {
           colors.push(tmp.r, tmp.g, tmp.b);
         }
       }
+
+      // Sparse lit windows on the nearer, taller boxes — small warm quads
+      // floated just off a wall. They fade with distance like the walls do,
+      // so the ring reads as an inhabited city melting into the dusk.
+      if (H >= 2 && t < 0.65 && rng() < 0.55) {
+        const nWin = 1 + Math.floor(rng() * 2);
+        for (let w = 0; w < nWin; w++) {
+          const face = Math.floor(rng() * 4);
+          const wy = 0.5 + rng() * (H - 1.1);
+          const hw = 0.26; // half width
+          const hh = 0.32; // half height
+          tmp.set("#ffc97a").lerp(horizon, fade * 0.85);
+
+          let quad: [number, number, number][];
+          if (face === 0 || face === 1) {
+            const x = face === 0 ? b[1] + 0.03 : b[0] - 0.03;
+            const wz = b[4] + 0.5 + rng() * (b[5] - b[4] - 1);
+            quad = [
+              [x, wy - hh, wz - hw],
+              [x, wy + hh, wz - hw],
+              [x, wy + hh, wz + hw],
+              [x, wy - hh, wz + hw],
+            ];
+          } else {
+            const z = face === 2 ? b[5] + 0.03 : b[4] - 0.03;
+            const wx = b[0] + 0.5 + rng() * (b[1] - b[0] - 1);
+            quad = [
+              [wx - hw, wy - hh, z],
+              [wx - hw, wy + hh, z],
+              [wx + hw, wy + hh, z],
+              [wx + hw, wy - hh, z],
+            ];
+          }
+          const [q0, q1, q2, q3] = quad;
+          for (const p of [q0, q1, q2, q0, q2, q3]) {
+            positions.push(...p);
+            colors.push(tmp.r, tmp.g, tmp.b);
+          }
+        }
+      }
     }
   }
 

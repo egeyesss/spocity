@@ -20,9 +20,9 @@ import * as THREE from "three";
 //
 // SKY_HORIZON is exported so the scene can match the fog colour to it; the
 // ground then dissolves into the sky instead of ending in a seam.
-export const SKY_TOP = "#0b0913"; // near-black indigo overhead
-export const SKY_HORIZON = "#3a2f44"; // muted dusk mauve at the horizon
-const SKY_GLOW = "#5a4654"; // faint warmth right on the horizon line
+export const SKY_TOP = "#161129"; // deep dusk indigo overhead (spec sky-dark)
+export const SKY_HORIZON = "#3a2545"; // dusk purple at the horizon (spec sky-mid)
+const SKY_GLOW = "#7a4655"; // warm sunset remnant right on the horizon line
 
 const RADIUS = 450; // < camera far (600); camera-locked so this is exact
 

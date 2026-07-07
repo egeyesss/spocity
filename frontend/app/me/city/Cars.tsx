@@ -1,8 +1,8 @@
 "use client";
 
 import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
-import type { Group, MeshStandardMaterial } from "three";
+import { useEffect, useMemo, useRef } from "react";
+import type { Group, MeshBasicMaterial, MeshStandardMaterial } from "three";
 import { ROAD_WIDTH } from "./constants";
 import type { Road } from "./grid";
 import { ISLAND_R } from "./StreetFurniture";
@@ -66,16 +66,22 @@ export function Cars({ roads }: { roads: Road[] }) {
     return { xLanes: xs, zLanes: zs };
   }, [roads]);
 
-  const cars = useMemo<CarState[]>(
-    () => Array.from({ length: count }, () => spawn(roads)),
-    [roads, count],
-  );
+  // Car state lives in a ref, built in an effect — useFrame mutates it every
+  // frame, and the react-hooks lint (correctly) forbids mutating a useMemo
+  // value after render.
+  const carsRef = useRef<CarState[]>([]);
+  useEffect(() => {
+    carsRef.current = Array.from({ length: count }, () => spawn(roads));
+  }, [roads, count]);
 
   const groupRefs = useRef<(Group | null)[]>([]);
   const bodyRefs = useRef<(MeshStandardMaterial | null)[]>([]);
   const cabinRefs = useRef<(MeshStandardMaterial | null)[]>([]);
+  const headRefs = useRef<(MeshBasicMaterial | null)[]>([]);
+  const tailRefs = useRef<(MeshBasicMaterial | null)[]>([]);
 
   useFrame((_, delta) => {
+    const cars = carsRef.current;
     for (let i = 0; i < cars.length; i++) {
       const c = cars[i];
       const road = roads[c.road];
@@ -108,12 +114,13 @@ export function Cars({ roads }: { roads: Road[] }) {
       }
       const perp = c.laneOff + (target - c.laneOff) * f;
 
+      // Face the direction of travel (local +X = forward, for the lights).
       if (road.axis === "z") {
         g.position.set(road.lane + perp, 0.34, along);
-        g.rotation.y = Math.PI / 2;
+        g.rotation.y = c.dir === 1 ? -Math.PI / 2 : Math.PI / 2;
       } else {
         g.position.set(along, 0.34, road.lane + perp);
-        g.rotation.y = 0;
+        g.rotation.y = c.dir === 1 ? 0 : Math.PI;
       }
 
       // Fade in over the first 10%, hold, fade out over the last 30%.
@@ -131,6 +138,10 @@ export function Cars({ roads }: { roads: Road[] }) {
       }
       const cabin = cabinRefs.current[i];
       if (cabin) cabin.opacity = op * 0.9;
+      const head = headRefs.current[i];
+      if (head) head.opacity = op;
+      const tail = tailRefs.current[i];
+      if (tail) tail.opacity = op;
     }
   });
 
@@ -138,7 +149,7 @@ export function Cars({ roads }: { roads: Road[] }) {
 
   return (
     <>
-      {cars.map((_, i) => (
+      {Array.from({ length: count }, (_, i) => (
         <group
           key={i}
           ref={(el) => {
@@ -169,6 +180,31 @@ export function Cars({ roads }: { roads: Road[] }) {
               opacity={0}
               roughness={0.25}
               metalness={0.1}
+            />
+          </mesh>
+          {/* Headlights + taillights — unlit so they read at dusk */}
+          <mesh position={[0.96, 0.2, 0]}>
+            <boxGeometry args={[0.06, 0.13, 0.72]} />
+            <meshBasicMaterial
+              ref={(el) => {
+                headRefs.current[i] = el;
+              }}
+              color="#fff0c0"
+              toneMapped={false}
+              transparent
+              opacity={0}
+            />
+          </mesh>
+          <mesh position={[-0.96, 0.2, 0]}>
+            <boxGeometry args={[0.06, 0.13, 0.72]} />
+            <meshBasicMaterial
+              ref={(el) => {
+                tailRefs.current[i] = el;
+              }}
+              color="#ff4b4b"
+              toneMapped={false}
+              transparent
+              opacity={0}
             />
           </mesh>
         </group>

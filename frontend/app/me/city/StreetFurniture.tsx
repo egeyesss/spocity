@@ -22,27 +22,27 @@ export function StreetFurniture({
       {intersections.map((p, i) => (
         <group key={`rb-${i}`} position={[p.x, 0, p.z]}>
           {/* stone curb ring (bottom lifted clear of the road) */}
-          <mesh position={[0, 0.2, 0]} castShadow receiveShadow>
+          <mesh position={[0, 0.2, 0]}>
             <cylinderGeometry args={[ISLAND_R + 0.5, ISLAND_R + 0.6, 0.2, 28]} />
-            <meshStandardMaterial color="#8C8C88" roughness={0.9} />
+            <meshBasicMaterial color="#57514a" />
           </mesh>
           {/* grass top */}
-          <mesh position={[0, 0.38, 0]} castShadow receiveShadow>
+          <mesh position={[0, 0.38, 0]}>
             <cylinderGeometry args={[ISLAND_R, ISLAND_R, 0.18, 28]} />
-            <meshStandardMaterial color="#3F8E45" roughness={0.85} />
+            <meshBasicMaterial color="#2E5133" />
           </mesh>
           {/* centerpiece tree */}
-          <mesh position={[0, 0.95, 0]} castShadow>
+          <mesh position={[0, 0.95, 0]}>
             <boxGeometry args={[0.34, 1.0, 0.34]} />
-            <meshStandardMaterial color="#6B4F2A" roughness={0.9} />
+            <meshBasicMaterial color="#4a3620" />
           </mesh>
-          <mesh position={[0, 1.75, 0]} castShadow>
+          <mesh position={[0, 1.75, 0]}>
             <boxGeometry args={[1.5, 1.2, 1.5]} />
-            <meshStandardMaterial color="#2F8F3C" roughness={0.8} />
+            <meshBasicMaterial color="#22502c" />
           </mesh>
-          <mesh position={[0, 2.5, 0]} castShadow>
+          <mesh position={[0, 2.5, 0]}>
             <boxGeometry args={[0.95, 0.75, 0.95]} />
-            <meshStandardMaterial color="#37A347" roughness={0.8} />
+            <meshBasicMaterial color="#2d6338" />
           </mesh>
         </group>
       ))}
