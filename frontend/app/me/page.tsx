@@ -1,7 +1,12 @@
 import { cookies } from "next/headers";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import CityCanvas from "./city/CityCanvas";
-import LogoutButton from "./LogoutButton";
+import CityControls from "./CityControls";
+import { Wordmark } from "@/components/Wordmark";
+
+const PANEL =
+  "border-2 border-[#0a0812] bg-[rgba(15,12,24,0.88)] shadow-[3px_3px_0_0_rgba(0,0,0,0.55)] backdrop-blur";
 
 async function getUser() {
   const cookieStore = await cookies();
@@ -15,7 +20,11 @@ async function getUser() {
       cache: "no-store",
     });
     if (!res.ok) return null;
-    return res.json() as Promise<{ display_name: string; spotify_user_id: string }>;
+    return res.json() as Promise<{
+      display_name: string;
+      spotify_user_id: string;
+      username: string | null;
+    }>;
   } catch {
     return null;
   }
@@ -26,21 +35,27 @@ export default async function MePage() {
 
   if (!user) redirect("/");
 
+  // Same full-screen-canvas + floating-pixel-panel layout as the demo and
+  // public city pages, so the owner's own city looks identical to the one
+  // visitors see (just with owner controls instead of a "build yours" CTA).
   return (
-    <div className="flex h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-zinc-800 px-6 py-3">
-        <div className="flex items-baseline gap-3">
-          <span className="font-semibold tracking-tight">Spocity</span>
-          <span className="text-sm text-zinc-500">
-            Hello, {user.display_name}
-          </span>
-        </div>
-        <LogoutButton />
-      </header>
+    <div className="relative h-screen w-screen overflow-hidden bg-[#13101f]">
+      <CityCanvas />
 
-      <main className="relative flex-1 overflow-hidden">
-        <CityCanvas />
-      </main>
+      {/* Whose city this is */}
+      <div
+        className={`absolute left-4 top-4 z-20 flex items-center gap-3 px-3 py-2 ${PANEL}`}
+      >
+        <Link href="/" aria-label="spocity home">
+          <Wordmark size={22} />
+        </Link>
+        <span className="font-pixel text-sm uppercase tracking-[0.1em] text-zinc-300">
+          {user.display_name}&apos;s city
+        </span>
+      </div>
+
+      {/* Owner controls */}
+      <CityControls username={user.username} />
     </div>
   );
 }
