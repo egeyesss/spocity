@@ -1,72 +1,71 @@
 # spocity
 
-> Your Spotify listening, built as a city. Every artist you listen to becomes a voxel building — the more you play them, the taller it grows. Genres settle into districts with their own architecture, and the skyline changes as your taste does.
+> Your Spotify listening turned into a 3D voxel city you can walk through. Every artist you play becomes a building, and the more you listen the taller it grows. Genres settle into their own neighborhoods, and the skyline changes as your taste does.
 
-**Live**: [spocity-smoky.vercel.app](https://spocity-smoky.vercel.app) · [connect Spotify](https://spocity-smoky.vercel.app/api/auth/login) to build your own, or wander the [demo city](https://spocity-smoky.vercel.app/demo) with no login.
+**Live:** [spocity-smoky.vercel.app](https://spocity-smoky.vercel.app) · [connect Spotify](https://spocity-smoky.vercel.app/api/auth/login) to build your own, or explore the [demo city](https://spocity-smoky.vercel.app/demo) without signing in.
 
-![The city at dusk](docs/city-overview.png)
+![A voxel city at dusk, seen from above](docs/city-overview.png)
 
-| | |
-|---|---|
-| ![Street level](docs/street-level.png) | ![Landing page](docs/landing.png) |
-
----
+<table>
+<tr>
+<td width="50%"><img src="docs/detail-panel.png" alt="Clicking a building shows the artist, tier, score and last-played date" /></td>
+<td width="50%"><img src="docs/postcard.png" alt="A shareable postcard rendered from the city" /></td>
+</tr>
+<tr>
+<td align="center"><em>Click any building for the artist behind it</em></td>
+<td align="center"><em>Save a shareable postcard of your city</em></td>
+</tr>
+</table>
 
 ## What it does
 
-- **One building per artist.** Buildings climb six tiers — shack, house, apartment, office, skyscraper, landmark — driven by a score of `seed + observed plays`. Day one is seeded from your Spotify top artists so the city is full within seconds; from then on, every play Spocity observes adds a voxel's worth of progress.
-- **Genre districts.** Artists are classified into ten high-level genre buckets (plus an "other" outskirts) via an ordered keyword matcher over Last.fm tags. Each district has hand-authored voxel architecture: brownstones with gold trim for hip-hop, glasshouse towers for electronic, art-deco spires for jazz.
-- **A city at dusk.** Flat-shaded pixel-art voxels with baked 3-tone shading, glowing windows, streetlights, ambient traffic, procedural outskirts and a gradient sky dome. Hover any building for the artist behind it; the artist you're playing *right now* pulses.
-- **Background ingestion.** Celery workers poll `recently-played` hourly per active user and recompute scores nightly, emitting tier-change events.
+Sign in with Spotify and Spocity reads your top artists, then lays out a city within a few seconds. Each artist is a building sized by how much you listen, climbing six tiers from a one-block shack up to a landmark tower. Artists get sorted into ten genre districts, each with its own architecture and palette: brownstones with gold trim for hip-hop, glass towers for electronic, art-deco spires for jazz. Hover a building to see who it is, and the artist you are playing right now glows and pulses on its tower.
 
-## Try it
+Every city lives at a public URL you can share (`/your-name`), and a **Save postcard** button renders a 1200×630 image of the skyline entirely in the browser. The demo city is the same thing without a login, so anyone can walk around one before deciding to connect their own account.
 
-Two ways in, both live:
+## How it works
 
-- **Connect Spotify** → the app pulls your top artists, seeds a skyline in seconds, classifies each artist into a district (with a progress bar), and drops you into your own city at a public URL you can share (`/<your-name>`). Spotify caps development-mode apps at **25 hand-approved accounts**, so if the beta is full the sign-in gracefully routes you to the demo instead.
-- **Demo city** → the `/demo` route is a real, fully interactive city (the project owner's) — no login required. Every city has a **Save postcard** button that renders a shareable 1200×630 PNG client-side.
+The parts I found most interesting to build.
 
----
+**Flat-shaded voxels.** The look is isometric pixel art, and normal 3D lighting fights it: shadows wash the colors with the sky tint and the shading shifts as you orbit. So nothing in the city is lit at all. Each building is baked into one merged mesh with the three-tone face shading written directly into the vertex colors, and a small unlit shader draws it. Windows carry a `glow` flag that skips the shading and reads as light against the dusk. Interior faces between voxels are dropped, so a whole building renders in a single draw call.
+
+**Scoring that respects your history.** The first version scored artists with a two-half-life decay curve. Once it ran against real listening data, it buried anyone I loved a couple of years ago under whatever I happened to play last week, which felt wrong for a product about your taste over time. Scores are now cumulative on top of a rank-seeded starting point, and the idea of "fading" moved from the math into the visuals instead. Watching the decay model fail on real data and then cutting it taught me more than keeping it would have.
+
+**Genres as a feedback loop.** Spotify removed genre tags from its artist objects in 2024, so tags come from Last.fm and run through an ordered keyword matcher that folds hundreds of micro-genres into ten buckets. Anything the matcher misses gets logged to its own table, so the rules improve from real misses rather than guesswork.
+
+**A preview harness for the 3D work.** For a while the city only rendered behind a Spotify login, so every visual change shipped blind. I added a dev-only route that renders the real city from a fixed mock payload, which turned iteration into a screenshot loop. It later grew into the public `/demo` page.
 
 ## Stack
 
 | Layer | Tech |
 |---|---|
-| Frontend | Next.js 15 (App Router) · TypeScript · Tailwind v4 · React Three Fiber |
-| Backend | Django 6 · Django REST Framework |
-| Database | Postgres 16 (Railway managed in prod, Docker locally) |
-| Workers | Celery + Redis (hourly ingest, nightly recompute) |
-| Genre data | Last.fm `artist.getTopTags` (Spotify removed artist genres in 2024) |
-| Hosting | Vercel (frontend) · Railway (Django + Postgres) |
+| Frontend | Next.js 15 (App Router), TypeScript, Tailwind v4, React Three Fiber |
+| Backend | Django 6, Django REST Framework |
+| Database | Postgres 16 (Railway in production, Docker locally) |
+| Workers | Celery and Redis for hourly ingestion and nightly recompute |
+| Genre data | Last.fm `artist.getTopTags` |
+| Hosting | Vercel (frontend), Railway (Django and Postgres) |
 
-The frontend proxies `/api/*` to the Railway backend via a Next.js rewrite, so the Django session cookie stays first-party on the Vercel origin — no cross-site cookie problems. Because the hosted deployment has no Celery worker running, first-login ingestion happens on-demand: a fast Spotify-only seed, then a batched Last.fm district-classification loop with a progress bar, and a play refresh on every city load.
-
-## Engineering notes
-
-A few decisions that shaped the project:
-
-- **Baked flat voxel shading.** The reference art is isometric pixel art, which PBR lighting can't reproduce — it washes colors with the sky tint and shifts with the camera. Instead, each building is one merged, interior-face-culled `BufferGeometry` with a 3-tone face shade baked into linear vertex colors, rendered by a tiny unlit shader. Windows carry a `glow` flag and skip shading entirely so they read as light sources. An entire building is a single draw call.
-- **Scores accumulate; they don't decay.** v1 shipped a two-half-life exponential decay model. Run against real listening data it erased genuinely important artists (anything loved two years ago scored below last week's background noise), so it was removed: scores are now cumulative on top of a rank-seeded anchor, and "fading" will be expressed visually (weathering) rather than numerically. Building the algorithm, measuring it against reality, and deleting it was the most useful thing this project taught me.
-- **Genre rollup as a feedback loop.** Spotify stopped returning artist genres, so tags come from Last.fm and pass through an ordered substring classifier into ten buckets. Every unmatched tag is logged to a `genre_unmapped` table — the classifier improves from production data instead of guesswork.
-- **A design harness, because 3D behind OAuth is invisible.** Every visual change used to ship blind (the city only rendered for a logged-in Spotify account). `/dev/city` renders the real city view from a deterministic mock payload, which made screenshot-driven iteration possible — and later became the public `/demo` route.
+The frontend proxies `/api/*` to the Railway backend through a Next.js rewrite, which keeps the Django session cookie first-party on the Vercel origin and avoids cross-site cookie problems. Because the hosted deployment runs without a Celery worker, first-login ingestion happens on demand: a quick Spotify-only seed, then a batched Last.fm classification pass with a progress bar, and a play refresh whenever a city loads.
 
 ## Architecture
 
 ```
 Browser
-  │
-  ├─ GET /        →  Next.js — landing (demo mode: all CTAs → /demo)
-  ├─ GET /demo    →  Next.js — sample city, no auth, fully client-side
-  ├─ GET /me      →  Next.js SSR → Django /api/auth/me/ (session cookie)
-  └─ client fetches → Django REST API
+  ├─ GET /            Next.js landing page
+  ├─ GET /demo        redirects to the owner's public city (mock fallback)
+  ├─ GET /<name>      public read-only city
+  ├─ GET /me          your own city (Django session cookie)
+  └─ client fetches   /api/* proxied to the Django backend
 
-Django
-  ├─ core/        auth (Spotify OAuth PKCE), city payload, genre rollup
-  └─ Celery worker + beat → Redis
-        ├─ hourly:  poll /recently-played per active user
+Django (Railway)
+  ├─ Spotify OAuth (PKCE), on-demand ingest, genre rollup
+  ├─ city payload + now-playing endpoints
+  └─ Celery worker + beat  →  Redis
+        ├─ hourly:  poll recently-played per active user
         └─ nightly: recompute scores, emit tier-change events
 
-Postgres ← Django ORM        Last.fm ← genre tags
+Postgres  ←  Django ORM            Last.fm  ←  genre tags
 ```
 
 ## Project structure
@@ -75,63 +74,45 @@ Postgres ← Django ORM        Last.fm ← genre tags
 spocity/
 ├── frontend/
 │   ├── app/
-│   │   ├── page.tsx           # Landing page (dusk aesthetic, live voxel hero)
-│   │   ├── demo/              # Public sample city (no auth)
-│   │   ├── dev/city/          # Dev-only design harness (404s in prod)
-│   │   ├── me/                # Authenticated city view
-│   │   │   └── city/          # 3D scene: mesher, materials, buildings, HUD
-│   │   └── api/auth/          # OAuth login + callback routes
-│   ├── components/            # Wordmark, hero city, CTA buttons
-│   └── lib/                   # fetchAPI, auth context, demo payload
+│   │   ├── page.tsx        Landing page (dusk aesthetic, live voxel hero)
+│   │   ├── demo/           Public demo city, redirects to the owner's
+│   │   ├── [username]/     Public per-user city pages
+│   │   ├── dev/city/       Dev-only design harness (404s in production)
+│   │   ├── me/             Your authenticated city
+│   │   │   └── city/       3D scene: mesher, materials, buildings, HUD
+│   │   └── api/auth/       OAuth login + callback routes
+│   ├── components/         Wordmark, hero city, CTA + postcard
+│   └── lib/                fetchAPI, auth context, district + demo data
 ├── backend/
-│   ├── core/                  # models, views, genre rollup, Spotify/Last.fm clients
-│   └── spocity/               # Django config, Celery app
+│   ├── core/               models, views, genre rollup, Spotify/Last.fm clients
+│   ├── start.sh            production entrypoint (migrate + gunicorn)
+│   └── spocity/            Django config, Celery app
 └── docker-compose.yml
 ```
 
----
+## Running it locally
 
-## Local development
+You only need Docker Desktop. Python and Node run inside the containers.
 
-Only **Docker Desktop** is required — everything runs in containers.
-
-### 1. Clone
+**1. Clone**
 
 ```bash
 git clone https://github.com/egeyesss/spocity.git
 cd spocity
 ```
 
-### 2. Spotify Developer App
+**2. Create a Spotify app.** In the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard), make an app and add `http://127.0.0.1:3000/api/auth/callback/spotify` as a redirect URI. Spotify no longer accepts `localhost`, so use `127.0.0.1` everywhere. Copy the Client ID.
 
-1. Go to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) and create an app.
-2. Under **Redirect URIs**, add `http://127.0.0.1:3000/api/auth/callback/spotify`.
-3. Note your **Client ID** and **Client Secret**.
-
-> **Gotcha**: Spotify no longer accepts `localhost` as a redirect URI. Use `127.0.0.1` everywhere.
-
-### 3. Environment variables
+**3. Set environment variables**
 
 ```bash
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env.local
 ```
 
-Fill in `backend/.env`:
-```
-SECRET_KEY=<any long random string>
-SPOTIFY_CLIENT_ID=<from dashboard>
-SPOTIFY_CLIENT_SECRET=<from dashboard>
-```
+Put your `SECRET_KEY` and `SPOTIFY_CLIENT_ID` in `backend/.env`, and the same client ID in `frontend/.env.local` as `NEXT_PUBLIC_SPOTIFY_CLIENT_ID`. The rest can stay on the example defaults.
 
-Fill in `frontend/.env.local`:
-```
-NEXT_PUBLIC_SPOTIFY_CLIENT_ID=<same client ID>
-```
-
-Everything else can stay as the example defaults.
-
-### 4. First run
+**4. Start everything**
 
 ```bash
 docker compose up --build
@@ -140,21 +121,19 @@ docker compose exec backend python manage.py migrate
 
 - Frontend: http://127.0.0.1:3000
 - Backend API: http://127.0.0.1:8000/api/
-- Sample city without auth: http://127.0.0.1:3000/demo
+- Demo city without auth: http://127.0.0.1:3000/demo
 
-### 5. Useful commands
+**5. Handy commands**
 
 ```bash
 docker compose exec backend python manage.py <command>   # Django management
-docker compose exec backend python manage.py test        # backend tests
+docker compose exec backend pytest                       # backend tests (106)
 docker compose exec frontend npx tsc --noEmit            # typecheck
 docker compose logs -f backend                           # tail backend logs
 ```
 
----
+## Status
 
-## Status & roadmap
-
-Live end to end: Spotify OAuth, on-demand ingestion, scoring, genre districts, the full 3D city, public shareable city pages, and the postcard generator all run in production (Vercel + Railway). Planned next: tier-change growth animations, opt-in preview-clip audio, and a Spotify quota-extension request to lift the 25-user cap.
+Spotify OAuth, on-demand ingestion, scoring, genre districts, the 3D city, public shareable pages, and the postcard generator all run in production on Vercel and Railway. The Spotify app is in development mode, which caps it at 25 approved accounts, so a sign-in that can't be approved routes to the demo city instead. Next on the list: tier-change growth animations, opt-in preview-clip audio, and a Spotify quota request to lift the account cap.
 
 *Not affiliated with Spotify AB.*
