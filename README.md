@@ -2,7 +2,7 @@
 
 > Your Spotify listening, built as a city. Every artist you listen to becomes a voxel building — the more you play them, the taller it grows. Genres settle into districts with their own architecture, and the skyline changes as your taste does.
 
-**Live demo**: [spocity-smoky.vercel.app](https://spocity-smoky.vercel.app) · jump straight to the [sample city](https://spocity-smoky.vercel.app/demo) — no login needed.
+**Live**: [spocity-smoky.vercel.app](https://spocity-smoky.vercel.app) · [connect Spotify](https://spocity-smoky.vercel.app/api/auth/login) to build your own, or wander the [demo city](https://spocity-smoky.vercel.app/demo) with no login.
 
 ![The city at dusk](docs/city-overview.png)
 
@@ -21,7 +21,10 @@
 
 ## Try it
 
-The [hosted demo](https://spocity-smoky.vercel.app) is the frontend in demo mode: the landing page plus a fully interactive **sample city** built from a deterministic mock payload. Spotify caps development-mode apps at 25 allowlisted OAuth users, so the sample city is the public path into the product — the full OAuth → your-real-city flow runs in local development (setup below).
+Two ways in, both live:
+
+- **Connect Spotify** → the app pulls your top artists, seeds a skyline in seconds, classifies each artist into a district (with a progress bar), and drops you into your own city at a public URL you can share (`/<your-name>`). Spotify caps development-mode apps at **25 hand-approved accounts**, so if the beta is full the sign-in gracefully routes you to the demo instead.
+- **Demo city** → the `/demo` route is a real, fully interactive city (the project owner's) — no login required. Every city has a **Save postcard** button that renders a shareable 1200×630 PNG client-side.
 
 ---
 
@@ -31,10 +34,12 @@ The [hosted demo](https://spocity-smoky.vercel.app) is the frontend in demo mode
 |---|---|
 | Frontend | Next.js 15 (App Router) · TypeScript · Tailwind v4 · React Three Fiber |
 | Backend | Django 6 · Django REST Framework |
-| Database | Postgres 16 (Docker locally) |
+| Database | Postgres 16 (Railway managed in prod, Docker locally) |
 | Workers | Celery + Redis (hourly ingest, nightly recompute) |
 | Genre data | Last.fm `artist.getTopTags` (Spotify removed artist genres in 2024) |
-| Hosting | Vercel (frontend demo mode) |
+| Hosting | Vercel (frontend) · Railway (Django + Postgres) |
+
+The frontend proxies `/api/*` to the Railway backend via a Next.js rewrite, so the Django session cookie stays first-party on the Vercel origin — no cross-site cookie problems. Because the hosted deployment has no Celery worker running, first-login ingestion happens on-demand: a fast Spotify-only seed, then a batched Last.fm district-classification loop with a progress bar, and a play refresh on every city load.
 
 ## Engineering notes
 
@@ -150,6 +155,6 @@ docker compose logs -f backend                           # tail backend logs
 
 ## Status & roadmap
 
-Auth, ingestion, scoring, genre districts and the full 3D city are built and run locally; the hosted deployment is the demo-mode frontend. Planned next: public per-user city pages, the postcard/share-image generator, and tier-change growth animations.
+Live end to end: Spotify OAuth, on-demand ingestion, scoring, genre districts, the full 3D city, public shareable city pages, and the postcard generator all run in production (Vercel + Railway). Planned next: tier-change growth animations, opt-in preview-clip audio, and a Spotify quota-extension request to lift the 25-user cap.
 
 *Not affiliated with Spotify AB.*
