@@ -17,20 +17,27 @@ export type NowPlayingData = {
 const POLL_INTERVAL_MS = 30_000;
 
 /**
- * Polls GET /api/now-playing/ every 30s and returns the current track, or
- * null when nothing is playing or the fetch fails. Errors are swallowed —
+ * Polls the now-playing endpoint every 30s and returns the current track,
+ * or null when nothing is playing or the fetch fails. Errors are swallowed —
  * a polling failure shouldn't crash the city.
+ *
+ * Without `username` it polls the session user's endpoint; with one it polls
+ * the public per-city endpoint, so visitors on public pages see the owner's
+ * live pulsing tower.
  */
-export function useNowPlaying(): NowPlayingData | null {
+export function useNowPlaying(username?: string): NowPlayingData | null {
   const [data, setData] = useState<NowPlayingData | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    const path = username
+      ? `/api/city/${encodeURIComponent(username)}/now-playing/`
+      : "/api/now-playing/";
 
     async function poll() {
       try {
-        const result = await fetchAPI<NowPlayingData | null>("/api/now-playing/");
+        const result = await fetchAPI<NowPlayingData | null>(path);
         if (!cancelled) {
           setData(result && result.is_playing ? result : null);
         }
@@ -45,7 +52,7 @@ export function useNowPlaying(): NowPlayingData | null {
       cancelled = true;
       if (timerRef.current !== null) clearInterval(timerRef.current);
     };
-  }, []);
+  }, [username]);
 
   return data;
 }

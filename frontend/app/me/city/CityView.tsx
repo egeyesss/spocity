@@ -1,24 +1,30 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { NowPlayingData } from "@/lib/useNowPlaying";
 import { CityScene } from "./CityScene";
 import { DetailPanel, HoverTooltip, MiniMap, NowPlayingCard } from "./Hud";
+import { CaptureBridge, PostcardButton, type CaptureFn } from "./Postcard";
 import { buildCity } from "./grid";
 import type { CityPayload } from "./types";
 
 /**
  * The full city view: 3D canvas + HUD overlays. Takes an already-fetched
- * payload so it can be driven by the real API (/me) or by mock data
- * (/dev/city) — the render path is identical either way.
+ * payload so it can be driven by the real API (/me, public pages) or by
+ * mock data (/dev/city) — the render path is identical either way.
+ *
+ * `postcardTitle` enables the postcard button, labelled with whose city
+ * this is (e.g. "Ege Y's city").
  */
 export function CityView({
   data,
   nowPlaying,
+  postcardTitle,
 }: {
   data: CityPayload;
   nowPlaying: NowPlayingData | null;
+  postcardTitle?: string;
 }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -46,13 +52,20 @@ export function CityView({
       (slug ? map.get(slug) : undefined) ?? "#9CA3AF";
   }, [data.buckets]);
 
+  const captureRef = useRef<CaptureFn | null>(null);
+  const districtCount = useMemo(
+    () => new Set(placed.map((a) => a.primary_genre_bucket ?? "other")).size,
+    [placed],
+  );
+
   return (
     <div className="relative h-full w-full">
       <Canvas
         shadows="percentage"
         camera={{ position: [90, 95, 130], fov: 26, near: 1, far: 600 }}
-        gl={{ antialias: true }}
+        gl={{ antialias: true, preserveDrawingBuffer: true }}
       >
+        <CaptureBridge captureRef={captureRef} />
         <CityScene
           artists={placed}
           blocks={blocks}
@@ -83,6 +96,15 @@ export function CityView({
       )}
 
       {nowPlaying && <NowPlayingCard nowPlaying={nowPlaying} />}
+
+      {postcardTitle && (
+        <PostcardButton
+          captureRef={captureRef}
+          title={postcardTitle}
+          subtitle={`${placed.length} artists · ${districtCount} districts`}
+          filename={`spocity-postcard.png`}
+        />
+      )}
 
       <MiniMap
         blocks={blocks}

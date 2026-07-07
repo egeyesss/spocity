@@ -5,6 +5,7 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
+from django.utils.text import slugify
 
 
 class User(AbstractUser):
@@ -13,6 +14,29 @@ class User(AbstractUser):
     fields later without painful data migrations.
     """
     pass
+
+
+# Slugs that would shadow frontend routes if a display name collided with them.
+RESERVED_SLUGS = {"me", "demo", "dev", "api", "admin", "login", "logout"}
+
+
+def build_public_slug(display_name: str, spotify_user_id: str) -> str:
+    """Derive a URL slug for a public city page from the Spotify display name.
+
+    Deliberately minimal (no user-facing rename flow): slugify the display
+    name, fall back to a spotify-id-derived handle when that yields nothing
+    usable, and suffix -2/-3/… on collision.
+    """
+    base = slugify(display_name)[:30].strip("-")
+    if len(base) < 3 or base in RESERVED_SLUGS:
+        base = f"user-{slugify(spotify_user_id)[:12] or 'x'}"
+
+    slug = base
+    n = 2
+    while SpotifyAccount.objects.filter(public_slug=slug).exists():
+        slug = f"{base}-{n}"
+        n += 1
+    return slug
 
 
 class SpotifyTokenRefreshError(Exception):
@@ -25,6 +49,10 @@ class SpotifyAccount(models.Model):
     )
     spotify_user_id = models.CharField(max_length=255, unique=True)
     display_name = models.CharField(max_length=255, blank=True)
+    # URL handle for the public city page (spocity.app/<public_slug>).
+    # Assigned once at first login; null only for rows created before the
+    # public-pages feature (backfilled by migration).
+    public_slug = models.SlugField(max_length=40, unique=True, null=True, blank=True)
     access_token = models.TextField()
     refresh_token = models.TextField()
     expires_at = models.DateTimeField()
@@ -99,6 +127,11 @@ class Artist(models.Model):
     name = models.CharField(max_length=255)
     image_url = models.URLField(max_length=500, blank=True)
     genres = models.JSONField(default=list)
+    # When a Last.fm tag lookup was last attempted for this artist. Lets the
+    # batched genre-classification endpoint skip artists that were already
+    # tried and legitimately have no tags (empty `genres` alone can't tell
+    # "not tried yet" from "tried, nothing found").
+    genres_checked_at = models.DateTimeField(null=True, blank=True)
     primary_genre_bucket = models.ForeignKey(
         GenreBucket,
         on_delete=models.SET_NULL,

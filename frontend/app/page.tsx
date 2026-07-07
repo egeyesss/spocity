@@ -42,7 +42,12 @@ const FAQS: { q: string; a: string }[] = [
   },
 ];
 
-export default function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
   return (
     <div className="min-h-screen bg-[#13101f] text-zinc-100">
       {/* ── Hero (dusk sky) ─────────────────────────────────────────────── */}
@@ -87,6 +92,31 @@ export default function Home() {
           </nav>
         </header>
 
+        {/* Sign-in failure notice. Spotify dev-mode apps only allow 25
+            hand-approved accounts, so a failed OAuth most likely means the
+            beta is full — say so and route people to the demo. */}
+        {error && (
+          <div className="relative z-10 mx-auto max-w-6xl px-6 pt-2">
+            <div className="border-2 border-[#FFC107] bg-[rgba(15,12,24,0.88)] px-4 py-3 shadow-[3px_3px_0_0_rgba(0,0,0,0.55)]">
+              <p className="font-pixel text-base uppercase tracking-[0.1em] text-[#FFC107]">
+                {error === "spotify_denied"
+                  ? "Spotify sign-in was cancelled."
+                  : "Spotify sign-in didn't go through."}
+              </p>
+              <p className="mt-1 text-sm text-zinc-400">
+                Spocity runs on a Spotify developer app capped at 25
+                hand-approved accounts — the beta may simply be full.{" "}
+                <Link
+                  href="/demo"
+                  className="text-[#4ADE80] underline underline-offset-2 hover:text-[#6ee7a0]"
+                >
+                  Visit the demo city instead →
+                </Link>
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Hero body */}
         <section className="relative z-10 mx-auto grid max-w-6xl items-center gap-10 px-6 pb-20 pt-10 lg:grid-cols-2 lg:pb-28 lg:pt-16">
           <div>
@@ -104,14 +134,12 @@ export default function Home() {
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-4">
               <CtaButton />
-              {process.env.NEXT_PUBLIC_DEMO_ONLY !== "1" && (
-                <Link
-                  href="/demo"
-                  className="inline-flex items-center gap-2 border-2 border-[#0a0812] bg-[rgba(15,12,24,0.7)] px-6 py-3 font-semibold text-zinc-200 shadow-[4px_4px_0_0_rgba(0,0,0,0.55)] transition-all hover:-translate-y-0.5 hover:bg-[rgba(25,20,38,0.85)]"
-                >
-                  See a sample city <span aria-hidden>→</span>
-                </Link>
-              )}
+              <Link
+                href="/demo"
+                className="inline-flex items-center gap-2 border-2 border-[#0a0812] bg-[rgba(15,12,24,0.7)] px-6 py-3 font-semibold text-zinc-200 shadow-[4px_4px_0_0_rgba(0,0,0,0.55)] transition-all hover:-translate-y-0.5 hover:bg-[rgba(25,20,38,0.85)]"
+              >
+                See the demo city <span aria-hidden>→</span>
+              </Link>
             </div>
             <p className="mt-6 font-pixel text-base uppercase tracking-[0.12em] text-zinc-500">
               Free · Read-only Spotify access · Never posts

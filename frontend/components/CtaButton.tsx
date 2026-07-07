@@ -13,15 +13,10 @@ const STYLES = {
   ghost: `${BASE} bg-[rgba(15,12,24,0.7)] text-zinc-200 hover:bg-[rgba(25,20,38,0.85)]`,
 } as const;
 
-// Demo-only deployments (frontend on Vercel, no Django backend) can't do
-// Spotify OAuth — every conversion button honestly points at the sample
-// city instead. Inlined at build time.
-const DEMO_ONLY = process.env.NEXT_PUBLIC_DEMO_ONLY === "1";
-
 /**
  * The main conversion button. Swaps between "connect Spotify" and "enter
  * your city" based on the cached auth state, so returning users go straight
- * back in. In demo-only deployments it links to /demo instead.
+ * back in.
  */
 export function CtaButton({
   variant = "primary",
@@ -34,15 +29,6 @@ export function CtaButton({
 }) {
   const { user } = useAuth();
   const sizeCls = size === "lg" ? "text-base" : "px-4 py-2 text-sm";
-
-  if (DEMO_ONLY) {
-    return (
-      <Link href="/demo" className={`${STYLES[variant]} ${sizeCls}`}>
-        See the sample city
-        <span aria-hidden>→</span>
-      </Link>
-    );
-  }
 
   return (
     <Link
