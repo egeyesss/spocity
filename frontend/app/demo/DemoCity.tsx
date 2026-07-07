@@ -19,7 +19,11 @@ export default function DemoCity() {
 
   return (
     <div className="relative h-screen w-screen">
-      <CityView data={payload} nowPlaying={nowPlaying} />
+      <CityView
+        data={payload}
+        nowPlaying={nowPlaying}
+        postcardTitle="A sample city"
+      />
 
       {/* Who/where am I — wordmark home link + sample badge */}
       <div

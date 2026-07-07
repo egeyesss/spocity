@@ -17,8 +17,9 @@ from .models import (
     SpotifyAccount,
     SpotifyTokenRefreshError,
     User,
+    build_public_slug,
 )
-from .services.ingest import run_initial_ingest, run_recent_ingest
+from .services.ingest import run_genre_fill, run_initial_ingest, run_recent_ingest
 from .services.recompute import recompute_user
 from .services.spotify import SpotifyAPIError, get_client
 
@@ -87,7 +88,7 @@ def spotify_callback(request):
         defaults={"email": email},
     )
 
-    SpotifyAccount.objects.update_or_create(
+    account, _ = SpotifyAccount.objects.update_or_create(
         user=user,
         defaults={
             "spotify_user_id": spotify_user_id,
@@ -98,10 +99,19 @@ def spotify_callback(request):
         },
     )
 
+    # Assign the public city URL handle once, on first login.
+    if not account.public_slug:
+        account.public_slug = build_public_slug(display_name, spotify_user_id)
+        account.save(update_fields=["public_slug"])
+
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
     request.session.save()
 
-    return Response({"display_name": display_name, "session_key": request.session.session_key})
+    return Response({
+        "display_name": display_name,
+        "username": account.public_slug,
+        "session_key": request.session.session_key,
+    })
 
 
 @api_view(["GET"])
@@ -111,6 +121,7 @@ def me(request):
     return Response({
         "display_name": spotify.display_name,
         "spotify_user_id": spotify.spotify_user_id,
+        "username": spotify.public_slug,
     })
 
 
@@ -127,9 +138,14 @@ def logout_view(request):
 @permission_classes([IsAuthenticated])
 def initial_ingest(request):
     """Pull top artists across all three time ranges, upsert them, seed
-    ArtistScores. Safe to call multiple times — idempotent."""
+    ArtistScores. Safe to call multiple times — idempotent.
+
+    Runs the fast path (no Last.fm lookups) so the city exists within a few
+    seconds of first login; the frontend then drives /api/ingest/genres/ in
+    batches to classify artists into districts with visible progress.
+    """
     try:
-        result = run_initial_ingest(request.user)
+        result = run_initial_ingest(request.user, fetch_genres=False)
     except SpotifyTokenRefreshError:
         return Response(
             {"error": "spotify_reauth_required"},
@@ -145,9 +161,32 @@ def initial_ingest(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+def genre_ingest(request):
+    """Classify a batch of the caller's untagged artists via Last.fm.
+
+    Body: {"budget": <int>} (optional, default 25, capped at 50). Returns
+    {"classified": n, "remaining": n} — the frontend loops until remaining
+    hits zero, showing progress.
+    """
+    try:
+        budget = int(request.data.get("budget", 25))
+    except (TypeError, ValueError):
+        budget = 25
+    budget = max(1, min(budget, 50))
+
+    result = run_genre_fill(request.user, budget=budget)
+    return Response(asdict(result))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def recent_ingest(request):
-    """Pull /recently-played (last 50 tracks) and insert PlayHistory rows.
-    Week 3 promotes this to a Celery beat task; manual trigger for now."""
+    """Pull /recently-played (last 50 tracks), insert PlayHistory rows, then
+    recompute the caller's scores so new plays move buildings immediately.
+
+    The Celery beat schedule covers this hourly when a worker is running;
+    calling it on city load keeps hosted deployments without a worker fresh.
+    """
     try:
         result = run_recent_ingest(request.user)
     except SpotifyTokenRefreshError:
@@ -160,26 +199,25 @@ def recent_ingest(request):
             {"error": "spotify_api_error", "detail": str(exc)},
             status=status.HTTP_502_BAD_GATEWAY,
         )
+    recompute_user(request.user)
     return Response(asdict(result))
 
 
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def now_playing(request):
-    """Return what the user is currently listening to, or null if nothing.
+def _now_playing_response(user) -> Response:
+    """Shared now-playing lookup for a given user, with the per-user cache.
 
-    Cached per-user for NOW_PLAYING_CACHE_TTL seconds so the frontend's 30s
-    polling interval doesn't hammer Spotify (their /currently-playing
-    endpoint has tight rate limits compared to the rest of the API).
+    Cached for NOW_PLAYING_CACHE_TTL seconds so the frontend's 30s polling
+    interval doesn't hammer Spotify (their /currently-playing endpoint has
+    tight rate limits compared to the rest of the API).
     """
-    cache_key = f"now_playing:{request.user.id}"
+    cache_key = f"now_playing:{user.id}"
     cached = cache.get(cache_key)
     if cached is not None:
         # Cache stores either the payload dict or the sentinel "__none__".
         return Response(None if cached == "__none__" else cached)
 
     try:
-        client = get_client(request.user.spotify_account)
+        client = get_client(user.spotify_account)
         data = client.get_currently_playing()
     except SpotifyTokenRefreshError:
         return Response(
@@ -215,16 +253,20 @@ def now_playing(request):
     return Response(payload)
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def now_playing(request):
+    """What the requesting user is currently listening to, or null."""
+    return _now_playing_response(request.user)
+
+
 # ── City data ─────────────────────────────────────────────────────────────────
 
 
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def me_city(request):
-    """Return everything the frontend needs to render the requesting
-    user's city in one round trip.
+def _city_payload(user) -> dict:
+    """Everything the frontend needs to render a user's city in one round
+    trip:
 
-    Shape:
         {
           "artists": [
             { spotify_id, name, image_url, tier, score, seed_score,
@@ -240,7 +282,7 @@ def me_city(request):
     """
     scores = (
         ArtistScore.objects
-        .filter(user=request.user)
+        .filter(user=user)
         .select_related("artist", "artist__primary_genre_bucket")
         .order_by("-score", "artist__name")
     )
@@ -273,7 +315,78 @@ def me_city(request):
         for b in GenreBucket.objects.all()
     ]
 
-    return Response({"artists": artists_payload, "buckets": buckets_payload})
+    return {"artists": artists_payload, "buckets": buckets_payload}
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def me_city(request):
+    """The requesting user's own city."""
+    return Response(_city_payload(request.user))
+
+
+# ── Public city pages ─────────────────────────────────────────────────────────
+#
+# Cities are public by URL (spocity.app/<slug>) — deliberate product call:
+# no privacy toggle in this version, the whole point is a shareable link.
+
+
+def _account_by_slug(slug: str) -> SpotifyAccount | None:
+    return (
+        SpotifyAccount.objects.filter(public_slug=slug)
+        .select_related("user")
+        .first()
+    )
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def public_city(request, slug: str):
+    """A user's city payload for their public page, plus owner display info."""
+    account = _account_by_slug(slug)
+    if account is None:
+        return Response(
+            {"error": "user_not_found"}, status=status.HTTP_404_NOT_FOUND
+        )
+    payload = _city_payload(account.user)
+    payload["owner"] = {
+        "display_name": account.display_name,
+        "username": account.public_slug,
+    }
+    return Response(payload)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def public_now_playing(request, slug: str):
+    """What the owner of a public city is listening to right now — visitors
+    see the same pulsing tower the owner does. Same per-user cache."""
+    account = _account_by_slug(slug)
+    if account is None:
+        return Response(
+            {"error": "user_not_found"}, status=status.HTTP_404_NOT_FOUND
+        )
+    return _now_playing_response(account.user)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def demo_city(request):
+    """The username of the city /demo should redirect to: the earliest
+    account with a built city (in practice, the project owner's)."""
+    account = (
+        SpotifyAccount.objects.filter(
+            public_slug__isnull=False,
+            user__artist_scores__isnull=False,
+        )
+        .order_by("user__date_joined")
+        .first()
+    )
+    if account is None:
+        return Response(
+            {"error": "no_city_yet"}, status=status.HTTP_404_NOT_FOUND
+        )
+    return Response({"username": account.public_slug})
 
 
 # ── Admin / staff-only endpoints ──────────────────────────────────────────────
