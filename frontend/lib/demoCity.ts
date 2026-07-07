@@ -1,4 +1,5 @@
-// Deterministic mock payload for the /dev/city preview page.
+// Deterministic sample-city payload, shared by the public /demo page and
+// the dev-only /dev/city design harness.
 //
 // Mirrors the shape of GET /api/me/city/ so CityView renders exactly what a
 // real logged-in user would see, without needing Spotify OAuth or the
@@ -6,7 +7,7 @@
 
 import { DISTRICTS } from "@/lib/districts";
 import type { NowPlayingData } from "@/lib/useNowPlaying";
-import type { ArtistRow, CityPayload, Tier } from "../../me/city/types";
+import type { ArtistRow, CityPayload, Tier } from "@/app/me/city/types";
 
 const BUCKETS = DISTRICTS;
 
@@ -57,7 +58,7 @@ const TIER_SCORE: Record<Tier, number> = {
   shack: 12,
 };
 
-export function devCityPayload(): CityPayload {
+export function demoCityPayload(): CityPayload {
   const artists: ArtistRow[] = [];
   let n = 0;
   const maxSize = Math.max(...Object.values(DISTRICT_SIZES));
@@ -90,7 +91,7 @@ export function devCityPayload(): CityPayload {
   return { artists, buckets: BUCKETS };
 }
 
-export function devNowPlaying(payload: CityPayload): NowPlayingData {
+export function demoNowPlaying(payload: CityPayload): NowPlayingData {
   // Pick a mid-tier hip-hop artist so the pulse is visible but not the landmark.
   const artist =
     payload.artists.find(

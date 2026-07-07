@@ -2,12 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { CityView } from "../../me/city/CityView";
-import { devCityPayload, devNowPlaying } from "./devCityData";
+import { demoCityPayload, demoNowPlaying } from "@/lib/demoCity";
 
 export default function DevCity() {
-  const payload = useMemo(() => devCityPayload(), []);
+  const payload = useMemo(() => demoCityPayload(), []);
   const [withNowPlaying, setWithNowPlaying] = useState(true);
-  const nowPlaying = useMemo(() => devNowPlaying(payload), [payload]);
+  const nowPlaying = useMemo(() => demoNowPlaying(payload), [payload]);
 
   return (
     <div className="relative h-screen w-screen">

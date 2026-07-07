@@ -104,12 +104,14 @@ export default function Home() {
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-4">
               <CtaButton />
-              <a
-                href="#how"
-                className="inline-flex items-center gap-2 border-2 border-[#0a0812] bg-[rgba(15,12,24,0.7)] px-6 py-3 font-semibold text-zinc-200 shadow-[4px_4px_0_0_rgba(0,0,0,0.55)] transition-all hover:-translate-y-0.5 hover:bg-[rgba(25,20,38,0.85)]"
-              >
-                How it works <span aria-hidden>↓</span>
-              </a>
+              {process.env.NEXT_PUBLIC_DEMO_ONLY !== "1" && (
+                <Link
+                  href="/demo"
+                  className="inline-flex items-center gap-2 border-2 border-[#0a0812] bg-[rgba(15,12,24,0.7)] px-6 py-3 font-semibold text-zinc-200 shadow-[4px_4px_0_0_rgba(0,0,0,0.55)] transition-all hover:-translate-y-0.5 hover:bg-[rgba(25,20,38,0.85)]"
+                >
+                  See a sample city <span aria-hidden>→</span>
+                </Link>
+              )}
             </div>
             <p className="mt-6 font-pixel text-base uppercase tracking-[0.12em] text-zinc-500">
               Free · Read-only Spotify access · Never posts

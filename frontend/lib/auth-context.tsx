@@ -33,12 +33,18 @@ function readCache(): AuthUser | null {
   }
 }
 
+// Demo-only deployments have no backend to confirm sessions against — skip
+// the auth fetch entirely so visitors don't fire doomed requests.
+const DEMO_ONLY = process.env.NEXT_PUBLIC_DEMO_ONLY === "1";
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Initialise from cache so the UI doesn't flash unauthenticated on reload.
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!DEMO_ONLY);
 
   useEffect(() => {
+    if (DEMO_ONLY) return;
+
     // Hydrate from localStorage first, then confirm with the server.
     const cached = readCache();
     if (cached) setUser(cached);
