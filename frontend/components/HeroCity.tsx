@@ -50,8 +50,11 @@ function Block() {
         <boxGeometry args={[27, 0.6, 17]} />
         <meshBasicMaterial color={GROUND} />
       </mesh>
-      <mesh position={[0, -0.29, -0.25]}>
-        <boxGeometry args={[27, 0.6, 3.2]} />
+      {/* Inset the road inside the ground so its end-cap faces don't sit
+          coplanar with the ground's edges — that coincidence was z-fighting
+          where the road ends. */}
+      <mesh position={[0, -0.28, -0.25]}>
+        <boxGeometry args={[26, 0.6, 3.2]} />
         <meshBasicMaterial color={ASPHALT} />
       </mesh>
 
